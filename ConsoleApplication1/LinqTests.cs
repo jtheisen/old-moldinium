@@ -22,7 +22,7 @@ namespace UnitTests.Lists
 
         IEnumerable<Func<Tuple<ILiveList<Int32>, Action<Action>>>> GetSampleIntLists()
         {
-            yield return () =>
+            return new Func<Tuple<ILiveList<Int32>, Action<Action>>>[] { () =>
             {
                 var list = new LiveList<Int32>();
 
@@ -40,7 +40,7 @@ namespace UnitTests.Lists
 
                     list.RemoveAt(2);
                 });
-            };
+            } };
         }
 
         void TestList<T>(

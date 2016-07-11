@@ -3,8 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
 VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Moldinium", "Moldinium\Moldinium.csproj", "{8103CF56-DA00-4A86-9E68-2C8CB7F286E9}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleApplication1", "ConsoleApplication1\ConsoleApplication1.csproj", "{59681310-386E-41A1-89E8-B0BEC74C6BB5}"
 EndProject
 Global
@@ -13,10 +11,6 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{8103CF56-DA00-4A86-9E68-2C8CB7F286E9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{8103CF56-DA00-4A86-9E68-2C8CB7F286E9}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{8103CF56-DA00-4A86-9E68-2C8CB7F286E9}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{8103CF56-DA00-4A86-9E68-2C8CB7F286E9}.Release|Any CPU.Build.0 = Release|Any CPU
 		{59681310-386E-41A1-89E8-B0BEC74C6BB5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{59681310-386E-41A1-89E8-B0BEC74C6BB5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{59681310-386E-41A1-89E8-B0BEC74C6BB5}.Release|Any CPU.ActiveCfg = Release|Any CPU
