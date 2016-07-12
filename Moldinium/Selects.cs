@@ -75,6 +75,14 @@ namespace IronStone.Moldinium
             public Boolean IsIn { get; set; }
         }
 
+        // Only until the compiler bug is fixed.
+        static Key? GetKey<TSource>(this WhereInfo<TSource>? source)
+        {
+            if (source == null) return null;
+
+            return source.Value.Key;
+        }
+
         public static ILiveList<TSource> Where<TSource>(this ILiveList<TSource> source, Func<TSource, Boolean> predicate)
         {
             return LiveList.Create<TSource>((onNext, downwardsRefreshRequests) =>
@@ -114,7 +122,7 @@ namespace IronStone.Moldinium
                                 manifestation.Insert(indexOfPrevious + 1, info);
 
                                 if (isIn)
-                                    onNext(ListEvent.Make(ListEventType.Add, v.Item, v.Key, previous?.Key));
+                                    onNext(ListEvent.Make(ListEventType.Add, v.Item, v.Key, previous.GetKey()));
                             }
                             break;
                         case ListEventType.Remove:
@@ -137,7 +145,7 @@ namespace IronStone.Moldinium
                                 manifestation.RemoveAt(indexOfTarget);
 
                                 if (target.IsIn)
-                                    onNext(ListEvent.Make(ListEventType.Remove, v.Item, v.Key, previous?.Key));
+                                    onNext(ListEvent.Make(ListEventType.Remove, v.Item, v.Key, previous.GetKey()));
                             }
                             break;
                         default:
