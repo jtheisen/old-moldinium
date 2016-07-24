@@ -3,16 +3,12 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
-using System.Linq.Expressions;
 using System.Reactive;
 using System.Reactive.Disposables;
 using System.Reactive.Subjects;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
-using Watchables;
 
-namespace MagicModels
+namespace IronStone.Moldinium
 {
     class ModelFactoryInterceptor : IInterceptor
     {
@@ -114,7 +110,7 @@ namespace MagicModels
 
                     var dependencies = Repository.Instance.Evaluate(invocation.Proceed);
 
-                    subscriptions.Disposable = Extensions.CreateCompositeDisposable(
+                    subscriptions.Disposable = new CompositeDisposable(
                         from w in dependencies select w.Changed.Subscribe(changed));
 
                     cache = invocation.ReturnValue;

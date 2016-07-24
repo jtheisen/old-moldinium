@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Reactive.Disposables;
+using System.Reactive.Subjects;
 
 namespace IronStone.Moldinium
 {
@@ -36,7 +38,7 @@ namespace IronStone.Moldinium
                             var newAttachment = new SelectAttachment<TResult>();
                             newAttachment.Key = v.Key;
                             // FIXME: avoid boxing
-                            newAttachment.Image = selector(v.Item);// FIXME Repository.Instance.EvaluateAndSubscribe(v2 => selector(v2.Item), redo, v);
+                            newAttachment.Image = Repository.Instance.EvaluateAndSubscribe(v2 => selector(v2.Item), redo, v);
                             onNext(ListEvent.Make(ListEventType.Add, newAttachment.Image, v.Key, previousKey));
                             attachments[v.Key] = newAttachment;
                             reverseMapping[newAttachment.Key] = v.Key;
@@ -52,8 +54,8 @@ namespace IronStone.Moldinium
                     }
                 }, upwardsRefreshRequests);
 
-                return Extensions.CreateCompositeDisposable(
-                    downwardsRefreshRequests?.Subscribe(key => upwardsRefreshRequests.OnNext(reverseMapping[key])),
+                return new CompositeDisposable(
+                    downwardsRefreshRequests?.Subscribe(key => upwardsRefreshRequests.OnNext(reverseMapping[key])) ?? Disposable.Empty,
                     subscription);
             });
         }
@@ -103,15 +105,18 @@ namespace IronStone.Moldinium
                         case ListEventType.Add:
                             {
                                 var indexOfPreviousIn = -1;
-                                var indexOfPrevious = 0;
-                                for (; indexOfPrevious < manifestation.Count; ++indexOfPrevious)
+                                var indexOfPrevious = -1;
+                                if (v.PreviousKey.HasValue)
                                 {
-                                    var current = manifestation[indexOfPrevious];
-                                    if (current.IsIn) indexOfPreviousIn = indexOfPrevious;
-                                    if (current.Key == v.PreviousKey) break;
-                                }
+                                    for (++indexOfPrevious; indexOfPrevious < manifestation.Count; ++indexOfPrevious)
+                                    {
+                                        var current = manifestation[indexOfPrevious];
+                                        if (current.IsIn) indexOfPreviousIn = indexOfPrevious;
+                                        if (current.Key == v.PreviousKey) break;
+                                    }
 
-                                if (indexOfPrevious == manifestation.Count) throw new Exception("Previous element not found in manifestation.");
+                                    if (indexOfPrevious == manifestation.Count) throw new Exception("Previous element not found in manifestation.");
+                                }
 
                                 var previous = indexOfPreviousIn < 0 ? (WhereInfo<TSource>?)null : manifestation[indexOfPreviousIn];
 
@@ -140,12 +145,12 @@ namespace IronStone.Moldinium
 
                                 var target = manifestation[indexOfTarget];
 
-                                var previous = indexOfTarget < 0 ? (WhereInfo<TSource>?)null : manifestation[indexOfPreviousIn];
+                                var previousIn = indexOfPreviousIn < 0 ? (WhereInfo<TSource>?)null : manifestation[indexOfPreviousIn];
 
                                 manifestation.RemoveAt(indexOfTarget);
 
                                 if (target.IsIn)
-                                    onNext(ListEvent.Make(ListEventType.Remove, v.Item, v.Key, previous.GetKey()));
+                                    onNext(ListEvent.Make(ListEventType.Remove, v.Item, v.Key, previousIn.GetKey()));
                             }
                             break;
                         default:
@@ -153,8 +158,8 @@ namespace IronStone.Moldinium
                     }
                 }, upwardsRefreshRequests);
 
-                return Extensions.CreateCompositeDisposable(
-                    downwardsRefreshRequests?.Subscribe(key => upwardsRefreshRequests.OnNext(key)),
+                return new CompositeDisposable(
+                    downwardsRefreshRequests?.Subscribe(key => upwardsRefreshRequests.OnNext(key)) ?? Disposable.Empty,
                     subscription);
             });
         }

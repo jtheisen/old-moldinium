@@ -4,9 +4,8 @@ using System.Linq;
 using System.Reactive;
 using System.Reactive.Disposables;
 using System.Reactive.Subjects;
-using MagicModels;
 
-namespace Watchables
+namespace IronStone.Moldinium
 {
     interface IWatchable
     {
@@ -96,7 +95,7 @@ namespace Watchables
 
             var dependencies = Repository.Instance.Evaluate(action);
 
-            subscriptions.Disposable = Extensions.CreateCompositeDisposable(
+            subscriptions.Disposable = new CompositeDisposable(
                 from w in dependencies select w.Changed.Subscribe(changed));
         }
 
@@ -135,7 +134,7 @@ namespace Watchables
 
                     var value = Repository.Instance.Evaluate(getter, out dependencies);
 
-                    subscriptions.Disposable = Extensions.CreateCompositeDisposable(
+                    subscriptions.Disposable = new CompositeDisposable(
                         from w in dependencies select w.Changed.Subscribe(changed));
 
                     dirty = false;

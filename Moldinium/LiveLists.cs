@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Linq;
+using System.Reactive.Disposables;
+using System.Reactive.Subjects;
 
 namespace IronStone.Moldinium
 {
@@ -264,12 +266,12 @@ namespace IronStone.Moldinium
 
         IEnumerator<T> IEnumerable<T>.GetEnumerator()
         {
-            return nested.GetEnumerator();
+            return items.GetEnumerator();
         }
 
         IEnumerator IEnumerable.GetEnumerator()
         {
-            return nested.GetEnumerator();
+            return items.GetEnumerator();
         }
 
         void ICollection.CopyTo(Array array, int index)
@@ -869,7 +871,7 @@ namespace IronStone.Moldinium
             for (var i = 0; i < items.Count; ++i)
                 onNext(ListEvent.Make(ListEventType.Add, items[i], keys[i], i > 0 ? keys[i - 1] : (Key?)null));
 
-            return Extensions.CreateCompositeDisposable(
+            return new CompositeDisposable(
                 refreshRequested?.Subscribe(key =>
                 {
                     var index = keys.IndexOf(key);
@@ -882,7 +884,7 @@ namespace IronStone.Moldinium
 
                     onNext(ListEvent.Make(ListEventType.Remove, item, key, previousKey));
                     onNext(ListEvent.Make(ListEventType.Add, item, key, previousKey));
-                }),
+                }) ?? Disposable.Empty,
                 events.Subscribe(onNext)
             );
         }
