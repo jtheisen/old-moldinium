@@ -25,7 +25,9 @@ namespace IronStone.Moldinium
 
             if (parts.Length != 2) throw new Exception($"Unexpected method encountered: {method.Name}");
 
-            var implementations = GetImplementations(invocation.Proxy, method.DeclaringType);
+            var type = invocation.Proxy.GetType().BaseType;
+
+            var implementations = GetImplementations(invocation.Proxy, type);
 
             switch (parts[0])
             {

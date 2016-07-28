@@ -99,8 +99,6 @@ namespace IronStone.Moldinium.UnitTests
                 {
                     var expected = expectedSelector(source).ToArray();
 
-                    var x = expected[0].Equals(actual.First());
-
                     CollectionAssert.AreEqual(expected, actual);
                 };
 
