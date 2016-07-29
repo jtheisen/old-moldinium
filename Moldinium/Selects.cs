@@ -9,8 +9,9 @@ namespace IronStone.Moldinium
     {
         struct SelectAttachment<TResult>
         {
-            public Key Key { get; set; }
-            public TResult Image { get; set; }
+            public Key Key;
+            public TResult Image;
+            public SerialDisposable WatchableSubscriptions;
         }
 
         public static ILiveList<TResult> Select<TSource, TResult>(this ILiveList<TSource> source, Func<TSource, TResult> selector)
@@ -29,8 +30,6 @@ namespace IronStone.Moldinium
                     upwardsRefreshRequests.OnNext(key);
                 };
 
-                var watchableSubscriptions = new SerialDisposable();
-
                 var subscription = source.Subscribe((type, item, key, previousKey) =>
                 {
                     var previousMappedKey = previousKey.HasValue ? attachments[previousKey.Value].Key : (Key?)null;
@@ -38,15 +37,17 @@ namespace IronStone.Moldinium
                     {
                         case ListEventType.Add:
                             var newAttachment = new SelectAttachment<TResult>();
+                            
                             newAttachment.Key = key;
                             // FIXME: avoid boxing
-                            newAttachment.Image = Repository.Instance.EvaluateAndSubscribe(watchableSubscriptions, selector, redo, item, key);
+                            newAttachment.Image = Repository.Instance.EvaluateAndSubscribe(ref newAttachment.WatchableSubscriptions, selector, redo, item, key);
                             onNext(ListEventType.Add, newAttachment.Image, key, previousMappedKey);
                             attachments[key] = newAttachment;
                             reverseMapping[newAttachment.Key] = key;
                             break;
                         case ListEventType.Remove:
                             var attachment = attachments[key];
+                            attachment.WatchableSubscriptions?.Dispose();
                             onNext(ListEventType.Remove, attachment.Image, key, previousMappedKey);
                             attachments.Remove(key);
                             reverseMapping.Remove(attachment.Key);
@@ -58,7 +59,6 @@ namespace IronStone.Moldinium
 
                 return new CompositeDisposable(
                     downwardsRefreshRequests?.Subscribe(key => upwardsRefreshRequests.OnNext(reverseMapping[key])) ?? Disposable.Empty,
-                    watchableSubscriptions,
                     subscription);
             });
         }

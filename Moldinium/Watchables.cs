@@ -222,7 +222,7 @@ namespace IronStone.Moldinium
             }
         }
 
-        public TResult EvaluateAndSubscribe<TResult>(SerialDisposable subscriptions, Func<TResult> evaluation, Action onChange)
+        public TResult EvaluateAndSubscribe<TResult>(ref SerialDisposable subscriptions, Func<TResult> evaluation, Action onChange)
         {
             if (onChange == null) throw new ArgumentException(nameof(onChange));
 
@@ -230,20 +230,30 @@ namespace IronStone.Moldinium
 
             var result = Evaluate(evaluation, out dependencies);
 
-            subscriptions.Disposable = new CompositeDisposable(
-                from d in dependencies select d.Changed.Subscribe(u => onChange()));
+            if (dependencies != null)
+            {
+                if (subscriptions == null)
+                    subscriptions = new SerialDisposable();
+
+                subscriptions.Disposable = new CompositeDisposable(
+                    from d in dependencies select d.Changed.Subscribe(u => onChange()));
+            }
+            else if (subscriptions != null)
+            {
+                subscriptions.Disposable = null;
+            }
 
             return result;
         }
 
-        public TResult EvaluateAndSubscribe<TSource, TKey, TResult>(SerialDisposable subscriptions, Func<TSource, TResult> selector, Action<TSource, TKey> onChange, TSource source, TKey key)
+        public TResult EvaluateAndSubscribe<TSource, TKey, TResult>(ref SerialDisposable subscriptions, Func<TSource, TResult> selector, Action<TSource, TKey> onChange, TSource source, TKey key)
         {
             // FIXME 1: The reference to selector and onChange must be weak!
             // FIXME 2: Don't create lambdas on each call, in particular don't allocate anything if there are no subscriptions
 
             if (onChange == null) throw new ArgumentException("onChange");
 
-            return EvaluateAndSubscribe(subscriptions, () => selector(source), () => onChange(source, key));
+            return EvaluateAndSubscribe(ref subscriptions, () => selector(source), () => onChange(source, key));
         }
 
         //public IWatchable<T> GetUnrootedWatchable<T>(Object index)
