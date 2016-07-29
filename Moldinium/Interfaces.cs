@@ -97,11 +97,5 @@ namespace IronStone.Moldinium
         IDisposable Subscribe(DLiveListObserver<T> observer, IObservable<Key> refreshRequested);
     }
 
-    // This interface is the key to efficient windowing, will have to build on this
-    public interface IOrderedLiveList<out T> : ILiveList<T>
-    {
-        IDisposable Subscribe(DLiveListObserver<T> observer, IObservable<Key> refreshRequested, Int32 skip, Int32 take);
-    }
-
     public delegate void DLiveListObserver<in T>(ListEventType type, T item, Key key, Key? previousKey);
 }

@@ -6,3 +6,9 @@
 - Join?
 - the exception fairy to warn you about complexity problems
 - aggregate syntax
+- implement take/skip efficiently via SortedLiveList<T>
+- make a generic refresh request test somehow
+- implement everything from enumerable/queryable albeit not efficiently
+
+optimization:
+- make evaluations allocation-free in the absence of any watchables

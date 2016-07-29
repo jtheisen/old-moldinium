@@ -73,6 +73,7 @@
     <Compile Include="Extensions.cs" />
     <Compile Include="ManifestedLiveList.cs" />
     <Compile Include="ModelFactory.cs" />
+    <Compile Include="Order.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Selects.cs" />
     <Compile Include="Watchables.cs" />
