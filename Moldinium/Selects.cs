@@ -24,29 +24,31 @@ namespace IronStone.Moldinium
 
                 var upwardsRefreshRequests = new Subject<Key>();
 
-                Action<ListEvent<TSource>> redo = v =>
+                Action<TSource, Key> redo = (item, key) =>
                 {
-                    upwardsRefreshRequests.OnNext(v.Key);
+                    upwardsRefreshRequests.OnNext(key);
                 };
 
-                var subscription = source.Subscribe(v =>
+                var watchableSubscriptions = new SerialDisposable();
+
+                var subscription = source.Subscribe((type, item, key, previousKey) =>
                 {
-                    var previousKey = v.PreviousKey.HasValue ? attachments[v.PreviousKey.Value].Key : (Key?)null;
-                    switch (v.Type)
+                    var previousMappedKey = previousKey.HasValue ? attachments[previousKey.Value].Key : (Key?)null;
+                    switch (type)
                     {
                         case ListEventType.Add:
                             var newAttachment = new SelectAttachment<TResult>();
-                            newAttachment.Key = v.Key;
+                            newAttachment.Key = key;
                             // FIXME: avoid boxing
-                            newAttachment.Image = Repository.Instance.EvaluateAndSubscribe(v2 => selector(v2.Item), redo, v);
-                            onNext(ListEvent.Make(ListEventType.Add, newAttachment.Image, v.Key, previousKey));
-                            attachments[v.Key] = newAttachment;
-                            reverseMapping[newAttachment.Key] = v.Key;
+                            newAttachment.Image = Repository.Instance.EvaluateAndSubscribe(watchableSubscriptions, selector, redo, item, key);
+                            onNext(ListEventType.Add, newAttachment.Image, key, previousMappedKey);
+                            attachments[key] = newAttachment;
+                            reverseMapping[newAttachment.Key] = key;
                             break;
                         case ListEventType.Remove:
-                            var attachment = attachments[v.Key];
-                            onNext(ListEvent.Make(ListEventType.Remove, attachment.Image, v.Key, previousKey));
-                            attachments.Remove(v.Key);
+                            var attachment = attachments[key];
+                            onNext(ListEventType.Remove, attachment.Image, key, previousMappedKey);
+                            attachments.Remove(key);
                             reverseMapping.Remove(attachment.Key);
                             break;
                         default:
@@ -56,6 +58,7 @@ namespace IronStone.Moldinium
 
                 return new CompositeDisposable(
                     downwardsRefreshRequests?.Subscribe(key => upwardsRefreshRequests.OnNext(reverseMapping[key])) ?? Disposable.Empty,
+                    watchableSubscriptions,
                     subscription);
             });
         }
@@ -98,21 +101,21 @@ namespace IronStone.Moldinium
                     upwardsRefreshRequests.OnNext(v.Key);
                 };
 
-                var subscription = source.Subscribe(v =>
+                var subscription = source.Subscribe((type, item, key, previousKey) =>
                 {
-                    switch (v.Type)
+                    switch (type)
                     {
                         case ListEventType.Add:
                             {
                                 var indexOfPreviousIn = -1;
                                 var indexOfPrevious = -1;
-                                if (v.PreviousKey.HasValue)
+                                if (previousKey.HasValue)
                                 {
                                     for (++indexOfPrevious; indexOfPrevious < manifestation.Count; ++indexOfPrevious)
                                     {
                                         var current = manifestation[indexOfPrevious];
                                         if (current.IsIn) indexOfPreviousIn = indexOfPrevious;
-                                        if (current.Key == v.PreviousKey) break;
+                                        if (current.Key == previousKey) break;
                                     }
 
                                     if (indexOfPrevious == manifestation.Count) throw new Exception("Previous element not found in manifestation.");
@@ -120,14 +123,14 @@ namespace IronStone.Moldinium
 
                                 var previous = indexOfPreviousIn < 0 ? (WhereInfo<TSource>?)null : manifestation[indexOfPreviousIn];
 
-                                var isIn = predicate(v.Item);// FIXME Repository.Instance.EvaluateAndSubscribe(v2 => predicate(v2.Item), redo, v);
+                                var isIn = predicate(item);// FIXME Repository.Instance.EvaluateAndSubscribe(v2 => predicate(v2.Item), redo, v);
 
-                                var info = new WhereInfo<TSource>() { Key = v.Key, IsIn = isIn };
+                                var info = new WhereInfo<TSource>() { Key = key, IsIn = isIn };
 
                                 manifestation.Insert(indexOfPrevious + 1, info);
 
                                 if (isIn)
-                                    onNext(ListEvent.Make(ListEventType.Add, v.Item, v.Key, previous.GetKey()));
+                                    onNext(ListEventType.Add, item, key, previous.GetKey());
                             }
                             break;
                         case ListEventType.Remove:
@@ -137,7 +140,7 @@ namespace IronStone.Moldinium
                                 for (; indexOfTarget < manifestation.Count; ++indexOfTarget)
                                 {
                                     var current = manifestation[indexOfTarget];
-                                    if (current.Key == v.Key) break;
+                                    if (current.Key == key) break;
                                     if (current.IsIn) indexOfPreviousIn = indexOfTarget;
                                 }
 
@@ -150,7 +153,7 @@ namespace IronStone.Moldinium
                                 manifestation.RemoveAt(indexOfTarget);
 
                                 if (target.IsIn)
-                                    onNext(ListEvent.Make(ListEventType.Remove, v.Item, v.Key, previousIn.GetKey()));
+                                    onNext(ListEventType.Remove, item, key, previousIn.GetKey());
                             }
                             break;
                         default:

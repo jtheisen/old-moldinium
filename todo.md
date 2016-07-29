@@ -1,0 +1,8 @@
+- Flatten probably breaks on doing concat(x, x): the keys of the inner lists are just passed on
+- Having ILiveList derive from IEnumerable is probably a stupid idea... think of the overloads and how easy it is to get the wrong one.
+- Implement a *checker*
+- GroupBy
+- Sort
+- Join?
+- the exception fairy to warn you about complexity problems
+- aggregate syntax

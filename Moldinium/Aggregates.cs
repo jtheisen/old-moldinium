@@ -8,7 +8,7 @@ using System.Reactive.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace MagicModels
+namespace IronStone.Moldinium
 {
     static class GroupOperations
     {
@@ -48,72 +48,79 @@ namespace MagicModels
         }
     }
 
-    public static partial class LiveList
+    namespace Rx
     {
-        private static IObservable<T> Aggregate<S, T>(ILiveList<S> s, Func<S, T> selector, IGroupOperations<T> go, T def = default(T))
-           where S : class
+        public static partial class LiveList
         {
-            return Observable.Create<T>(o =>
+            private static IObservable<T> Aggregate<S, T>(ILiveList<S> s, Func<S, T> selector, IGroupOperations<T> go, T def = default(T))
             {
-                T value = def;
-
-                BinaryOperation<T>
-                    forward = go.Forward,
-                    backward = go.Backward;
-
-                return s.Subscribe(v =>
+                return Observable.Create<T>(o =>
                 {
-                    switch (v.Type)
+                    T value = def;
+
+                    BinaryOperation<T>
+                        forward = go.Forward,
+                        backward = go.Backward;
+
+                    return s.Subscribe((type, item, key, previousKey) =>
                     {
-                        case ListEventType.Add:
-                            value = forward(value, selector(v.Item));
-                            break;
-                        case ListEventType.Remove:
-                            value = backward(value, selector(v.Item));
-                            break;
-                        default:
-                            break;
-                    }
+                        switch (type)
+                        {
+                            case ListEventType.Add:
+                                value = forward(value, selector(item));
+                                break;
+                            case ListEventType.Remove:
+                                value = backward(value, selector(item));
+                                break;
+                            default:
+                                break;
+                        }
 
-                    o.OnNext(value);
-                }, null);
-            });
+                        o.OnNext(value);
+                    }, null);
+                });
+            }
+
+            private static IObservable<T> GenericSum<S, T>(this ILiveList<S> source, Func<S, T> selector)
+            {
+                return Aggregate(source, selector, GroupOperations.Create<T>(Expression.AddChecked, Expression.SubtractChecked), default(T));
+            }
+
+            private static IObservable<Int32> Sum<S>(ILiveList<S> source, Func<S, Int32> selector)
+            {
+                return source.GenericSum(selector);
+            }
+
+            private static IObservable<Int64> Sum<S>(ILiveList<S> source, Func<S, Int64> selector)
+            {
+                return source.GenericSum(selector);
+            }
+
+            private static IObservable<T> GenericCount<S, T>(this ILiveList<S> source, T unit)
+            {
+                return Aggregate(source, s => unit, GroupOperations.Create<T>(Expression.AddChecked, Expression.SubtractChecked), default(T));
+            }
+
+            public static IObservable<Int32> Count<S>(ILiveList<S> source)
+            {
+                return source.GenericCount(1);
+            }
+
+            public static IObservable<Int64> CountLong<S>(ILiveList<S> source)
+            {
+                return source.GenericCount(1L);
+            }
         }
 
-        private static IObservable<T> GenericSum<S, T>(this ILiveList<S> source, Func<S, T> selector)
-            where S : class
-        {
-            return Aggregate(source, selector, GroupOperations.Create<T>(Expression.AddChecked, Expression.SubtractChecked), default(T));
-        }
-
-        private static IObservable<Int32> Sum<S>(ILiveList<S> source, Func<S, Int32> selector)
-            where S : class
-        {
-            return source.GenericSum(selector);
-        }
-
-        private static IObservable<Int64> Sum<S>(ILiveList<S> source, Func<S, Int64> selector)
-            where S : class
-        {
-            return source.GenericSum(selector);
-        }
-
-        private static IObservable<T> GenericCount<S, T>(this ILiveList<S> source, T unit)
-            where S : class
-        {
-            return Aggregate(source, s => unit, GroupOperations.Create<T>(Expression.AddChecked, Expression.SubtractChecked), default(T));
-        }
-
-        public static IObservable<Int32> Count<S>(ILiveList<S> source)
-            where S : class
-        {
-            return source.GenericCount(1);
-        }
-
-        public static IObservable<Int64> CountLong<S>(ILiveList<S> source)
-            where S : class
-        {
-            return source.GenericCount(1L);
-        }
+        //namespace Ko
+        //{
+        //    public static partial class LiveList
+        //    {
+        //        public static Int32 Count<S>(ILiveList<S> source)
+        //        {
+        //            return Rx.LiveList.Count<S>(source).Watched("Count");
+        //        }
+        //    }
+        //}
     }
 }

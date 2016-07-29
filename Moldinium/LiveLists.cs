@@ -3,12 +3,14 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Diagnostics;
 using System.Linq;
 using System.Reactive.Disposables;
 using System.Reactive.Subjects;
 
 namespace IronStone.Moldinium
 {
+    [DebuggerDisplay("{Id}")]
     public struct Key : IEquatable<Key>, IComparable<Key>
     {
         internal Guid Id;
@@ -150,19 +152,27 @@ namespace IronStone.Moldinium
     /// </summary>
     /// <typeparam name="T">The item type of the list.</typeparam>
     /// <seealso cref="System.Collections.Generic.IEnumerable{T}" />
-    public interface ILiveList<T> : IEnumerable<T>
+    public interface ILiveList<out T> : IEnumerable<T>
     {
-        IDisposable Subscribe(Action<ListEvent<T>> onNext, IObservable<Key> refreshRequested);
+        IDisposable Subscribe(DLiveListObserver<T> observer, IObservable<Key> refreshRequested);
     }
+
+    // This interface is the key to efficient windowing, will have to build on this
+    public interface IOrderedLiveList<out T> : ILiveList<T>
+    {
+        IDisposable Subscribe(DLiveListObserver<T> observer, IObservable<Key> refreshRequested, Int32 skip, Int32 take);
+    }
+
+    public delegate void DLiveListObserver<in T>(ListEventType type, T item, Key key, Key? previousKey);
 
     class ConcreteLiveList<T> : ILiveList<T>, INotifyCollectionChanged
     {
-        public ConcreteLiveList(Func<Action<ListEvent<T>>, IObservable<Key>, IDisposable> subscribe)
+        public ConcreteLiveList(Func<DLiveListObserver<T>, IObservable<Key>, IDisposable> subscribe)
         {
             this.subscribe = subscribe;
         }
 
-        public IDisposable Subscribe(Action<ListEvent<T>> observer, IObservable<Key> refresh)
+        public IDisposable Subscribe(DLiveListObserver<T> observer, IObservable<Key> refresh)
         {
             return subscribe(observer, refresh);
         }
@@ -196,7 +206,7 @@ namespace IronStone.Moldinium
         {
             var lst = new List<T>();
 
-            using (subscribe(v => lst.Add(v.Item), null)) { }
+            using (subscribe((type, item, key, previousKey) => lst.Add(item), null)) { }
 
             return lst.GetEnumerator();
         }
@@ -211,24 +221,24 @@ namespace IronStone.Moldinium
             return GetEnumerator();
         }
 
-        void ProcessEvent(ListEvent<T> e)
+        void ProcessEvent(ListEventType type, T item, Key key, Key? previousKey)
         {
-            switch (e.Type)
+            switch (type)
             {
                 case ListEventType.Add:
                     collectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(
-                        NotifyCollectionChangedAction.Add, e.Item));
+                        NotifyCollectionChangedAction.Add, item));
                     break;
                 case ListEventType.Remove:
                     collectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(
-                        NotifyCollectionChangedAction.Remove, e.Item));
+                        NotifyCollectionChangedAction.Remove, item));
                     break;
                 default:
                     break;
             }
         }
 
-        Func<Action<ListEvent<T>>, IObservable<Key>, IDisposable> subscribe;
+        Func<DLiveListObserver<T>, IObservable<Key>, IDisposable> subscribe;
 
         IDisposable selfSubscription;
 
@@ -245,15 +255,15 @@ namespace IronStone.Moldinium
             nested.Subscribe(OnNext, null);
         }
 
-        void OnNext(ListEvent<T> v)
+        void OnNext(ListEventType type, T item, Key key, Key? previousKey)
         {
-            var index = v.PreviousKey.HasValue ? keys.IndexOf(v.PreviousKey.Value) : -1;
+            var index = previousKey.HasValue ? keys.IndexOf(previousKey.Value) : -1;
 
-            switch (v.Type)
+            switch (type)
             {
                 case ListEventType.Add:
-                    items.Insert(index + 1, v.Item);
-                    keys.Insert(index + 1, v.Key);
+                    items.Insert(index + 1, item);
+                    keys.Insert(index + 1, key);
                     break;
                 case ListEventType.Remove:
                     items.RemoveAt(index + 1);
@@ -333,7 +343,7 @@ namespace IronStone.Moldinium
             return lst;
         }
 
-        public static ILiveList<T> Create<T>(Func<Action<ListEvent<T>>, IObservable<Key>, IDisposable> subscribe)
+        public static ILiveList<T> Create<T>(Func<DLiveListObserver<T>, IObservable<Key>, IDisposable> subscribe)
         {
             return new ConcreteLiveList<T>(subscribe);
         }
@@ -373,12 +383,13 @@ namespace IronStone.Moldinium
             return lists.Flatten();
         }
 
-        struct FlattenListAttachment<T>
+        class FlattenOuterListAttachment<T>
         {
             public IDisposable Subscription { get; set; }
             public Key? LastItemKey { get; set; }
             public Key? PreviousKey { get; set; }
             public Subject<Key> InboundRefreshRequest { get; set; }
+            public Dictionary<Key, Key> IncomingToOutgoingKeyLookup { get; set; }
         }
 
         /// <summary>
@@ -391,90 +402,113 @@ namespace IronStone.Moldinium
         {
             return LiveList.Create<T>((onNext, inboundRefreshRequest) =>
             {
-                var attachments = new Dictionary<Key, FlattenListAttachment<T>>();
+                var outerAttachments = new Dictionary<Key, FlattenOuterListAttachment<T>>();
 
-                var outerReverseLookup = new Dictionary<Key, Key>();
+                // inner incoming key -> outer incoming key it belongs to
+                var innerToOuterKeyLookup = new Dictionary<Key, Key>();
 
-                inboundRefreshRequest.Subscribe(key =>
+                var inboundRefreshRequestSubscription = inboundRefreshRequest?.Subscribe(key =>
                 {
-                    var listKey = outerReverseLookup[key];
+                    var listKey = innerToOuterKeyLookup[key];
 
-                    var attachment = attachments[listKey];
+                    var attachment = outerAttachments[listKey];
 
+                    // We delegate the refresh request to the correct inner live list.
                     attachment.InboundRefreshRequest.OnNext(key);
                 });
 
-                return listOfLists.Subscribe(v =>
+                var listOfListsSubscription = listOfLists.Subscribe((type, item, key, previousKey) =>
                 {
-                    switch (v.Type)
+                    switch (type)
                     {
                         case ListEventType.Add:
-                            var attachment = new FlattenListAttachment<T>();
+                            var attachment = new FlattenOuterListAttachment<T>();
 
-                            attachments.Add(v.Key, attachment);
+                            outerAttachments.Add(key, attachment);
 
-                            attachment.PreviousKey = v.PreviousKey;
+                            attachment.PreviousKey = previousKey;
 
                             attachment.InboundRefreshRequest = new Subject<Key>();
+
+                            // We're translating keys as all incoming keys of all lists may not be unique.
+                            attachment.IncomingToOutgoingKeyLookup = new Dictionary<Key, Key>();
 
                             var outboundRefreshRequests = new Subject<Key>();
 
                             attachment.InboundRefreshRequest.Subscribe(t => outboundRefreshRequests.OnNext(t));
 
-                            attachment.Subscription = v.Item.Subscribe(v2 =>
+                            attachment.Subscription = item.Subscribe((type2, item2, key2, previousKey2) =>
                             {
-                                if (v2.PreviousKey == null)
+                                Key nkey2;
+
+                                switch (type2)
+                                {
+                                    case ListEventType.Add:
+                                        nkey2 = KeyHelper.Create();
+
+                                        attachment.IncomingToOutgoingKeyLookup[key2] = nkey2;
+
+                                        innerToOuterKeyLookup[key2] = key;
+
+                                        if (previousKey2 == attachment.LastItemKey)
+                                        {
+                                            attachment.LastItemKey = key2;
+                                        }
+                                        break;
+                                    case ListEventType.Remove:
+                                        nkey2 = attachment.IncomingToOutgoingKeyLookup[key2];
+
+                                        innerToOuterKeyLookup.Remove(key2);
+
+                                        if (key2 == attachment.LastItemKey)
+                                        {
+                                            attachment.LastItemKey = previousKey2;
+                                        }
+                                        break;
+                                    default:
+                                        throw new Exception("Unexpected event type.");
+                                }
+
+                                if (previousKey2 == null)
                                 {
                                     if (attachment.PreviousKey.HasValue)
                                     {
-                                        var previousAttachment = attachments[attachment.PreviousKey.Value];
+                                        var previousAttachment = outerAttachments[attachment.PreviousKey.Value];
 
-                                        onNext(ListEvent.Make(v2.Type, v2.Item, v2.Key, previousAttachment.LastItemKey));
+                                        var npreviousKey2 = previousAttachment.LastItemKey
+                                            .ApplyTo(attachment.IncomingToOutgoingKeyLookup);
+
+                                        onNext(type2, item2, nkey2, npreviousKey2);
                                     }
                                     else
                                     {
-                                        onNext(ListEvent.Make(v2.Type, v2.Item, v2.Key, null));
+                                        onNext(type2, item2, nkey2, null);
                                     }
                                 }
                                 else
                                 {
-                                    onNext(v2);
+                                    var npreviousKey2 = previousKey2.ApplyTo(attachment.IncomingToOutgoingKeyLookup);
+
+                                    onNext(type2, item2, nkey2, npreviousKey2);
                                 }
 
-                                switch (v2.Type)
-                                {
-                                    case ListEventType.Add:
-                                        outerReverseLookup[v2.Key] = v.Key;
-
-                                        if (v2.PreviousKey == attachment.LastItemKey)
-                                        {
-                                            attachment.LastItemKey = v2.Key;
-                                        }
-                                        break;
-                                    case ListEventType.Remove:
-                                        outerReverseLookup.Remove(v2.Key);
-
-                                        if (v2.Key == attachment.LastItemKey)
-                                        {
-                                            attachment.LastItemKey = v2.PreviousKey;
-                                        }
-                                        break;
-                                    default:
-                                        break;
-                                }
                             }, outboundRefreshRequests);
                             break;
 
                         case ListEventType.Remove:
-                            var oldAttachment = attachments[v.Key];
+                            var oldAttachment = outerAttachments[key];
 
                             oldAttachment.Subscription.Dispose();
 
-                            attachments.Remove(v.Key);
+                            outerAttachments.Remove(key);
                             break;
                     }
                 }, null);
 
+                return new CompositeDisposable(
+                    inboundRefreshRequestSubscription ?? Disposable.Empty,
+                    listOfListsSubscription
+                    );
             });
         }
     }
@@ -866,10 +900,10 @@ namespace IronStone.Moldinium
 
         protected virtual void OnEvaluated() { }
 
-        public IDisposable Subscribe(Action<ListEvent<T>> onNext, IObservable<Key> refreshRequested = null)
+        public IDisposable Subscribe(DLiveListObserver<T> onNext, IObservable<Key> refreshRequested = null)
         {
             for (var i = 0; i < items.Count; ++i)
-                onNext(ListEvent.Make(ListEventType.Add, items[i], keys[i], i > 0 ? keys[i - 1] : (Key?)null));
+                onNext(ListEventType.Add, items[i], keys[i], i > 0 ? keys[i - 1] : (Key?)null);
 
             return new CompositeDisposable(
                 refreshRequested?.Subscribe(key =>
@@ -882,10 +916,10 @@ namespace IronStone.Moldinium
 
                     var previousKey = index == 0 ? (Key?)null : keys[index - 1];
 
-                    onNext(ListEvent.Make(ListEventType.Remove, item, key, previousKey));
-                    onNext(ListEvent.Make(ListEventType.Add, item, key, previousKey));
+                    onNext(ListEventType.Remove, item, key, previousKey);
+                    onNext(ListEventType.Add, item, key, previousKey);
                 }) ?? Disposable.Empty,
-                events.Subscribe(onNext)
+                events.Subscribe(v => onNext(v.Type, v.Item, v.Key, v.PreviousKey))
             );
         }
 

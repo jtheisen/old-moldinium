@@ -175,6 +175,8 @@ namespace IronStone.Moldinium
             evaluationStack.Push(new EvaluationRecord());
         }
 
+        Dictionary<Object, IWatchable> unrootedWatchables = new Dictionary<Object, IWatchable>();
+
         class EvaluationRecord
         {
             internal List<IWatchable> evaluatedWatchables = new List<IWatchable>();
@@ -220,31 +222,39 @@ namespace IronStone.Moldinium
             }
         }
 
-        public Type EvaluateAndSubscribe<Type>(Func<Type> getter, Action onChange)
+        public TResult EvaluateAndSubscribe<TResult>(SerialDisposable subscriptions, Func<TResult> evaluation, Action onChange)
         {
-            if (onChange == null) throw new ArgumentException("onChange");
+            if (onChange == null) throw new ArgumentException(nameof(onChange));
 
             IEnumerable<IWatchable> dependencies;
 
-            var result = Evaluate(getter, out dependencies);
+            var result = Evaluate(evaluation, out dependencies);
 
-            foreach (var dependency in dependencies)
-            {
-                var subscription = dependency.Changed.Subscribe(u => onChange());
-            }
+            subscriptions.Disposable = new CompositeDisposable(
+                from d in dependencies select d.Changed.Subscribe(u => onChange()));
 
             return result;
         }
 
-        public TResult EvaluateAndSubscribe<TSource, TResult>(Func<TSource, TResult> selector, Action<TSource> onChange, TSource target)
+        public TResult EvaluateAndSubscribe<TSource, TKey, TResult>(SerialDisposable subscriptions, Func<TSource, TResult> selector, Action<TSource, TKey> onChange, TSource source, TKey key)
         {
             // FIXME 1: The reference to selector and onChange must be weak!
             // FIXME 2: Don't create lambdas on each call, in particular don't allocate anything if there are no subscriptions
 
             if (onChange == null) throw new ArgumentException("onChange");
 
-            return EvaluateAndSubscribe(() => selector(target), () => onChange(target));
+            return EvaluateAndSubscribe(subscriptions, () => selector(source), () => onChange(source, key));
         }
+
+        //public IWatchable<T> GetUnrootedWatchable<T>(Object index)
+        //{
+        //    IWatchable watchable = null;
+
+        //    if (unrootedWatchables.TryGetValue(index, out watchable))
+        //        return (IWatchable<T>)watchable;
+
+        //    return unrootedWatchables[index] = 
+        //}
 
         internal void NoteEvaluation(IWatchable watchable)
         {
@@ -268,5 +278,12 @@ namespace IronStone.Moldinium
         {
             return new Watcher(action);
         }
+
+        //public static T Watched<T>(this IObservable<T> source, Object id)
+        //{
+            
+
+        //    return Repository.Instance.GetUnrootedWatchable<T>(new { source, id }).Value;
+        //}
     }
 }

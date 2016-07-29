@@ -10,6 +10,16 @@ namespace IronStone.Moldinium.UnitTests
     public class LiveListTest : LinqTestsCommon
     {
         [TestMethod]
+        public void Concats()
+        {
+            TestList<Int32>(
+                e => e.Concat(e),
+                e => e.Concat(e),
+                GetSampleIntLists()
+                );
+        }
+
+        [TestMethod]
         public void Selects()
         {
             TestList<Int32>(

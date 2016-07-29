@@ -68,7 +68,7 @@ namespace UnitTests.Lists
                     //CollectionAssert.AreEqual(expected, actual);
                 };
 
-                using (source.Subscribe(v =>
+                using (source.Subscribe((type, item, key, previousKey) =>
                 {
                     doCheck();
                 }, null)

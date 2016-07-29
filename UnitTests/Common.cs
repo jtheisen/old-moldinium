@@ -91,7 +91,7 @@ namespace IronStone.Moldinium.UnitTests
 
                 var work = tuple.Item2;
 
-                var application = actualSelector(source);
+                var application = actualSelector(source).CheckSanity();
 
                 var actual = new ManifestedLiveList<T>(application);
 
