@@ -97,7 +97,7 @@ namespace IronStone.Moldinium.UnitTests
 
                 Action doCheck = () =>
                 {
-                    var expected = expectedSelector(source).ToArray();
+                    var expected = expectedSelector(source.ToEnumerable()).ToArray();
 
                     CollectionAssert.AreEqual(expected, actual);
                 };

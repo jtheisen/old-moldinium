@@ -6,7 +6,7 @@ using System.Collections.Specialized;
 namespace IronStone.Moldinium
 {
     // Pretty much every ILiveList<T> really is actually this thing here.
-    class ConcreteLiveList<T> : ILiveList<T>, INotifyCollectionChanged
+    class ConcreteLiveList<T> : ILiveList<T>, IEnumerable<T>, INotifyCollectionChanged
     {
         public ConcreteLiveList(Func<DLiveListObserver<T>, IObservable<Key>, IDisposable> subscribe)
         {

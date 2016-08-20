@@ -84,15 +84,14 @@ namespace IronStone.Moldinium
     }
 
     /// <summary>
-    /// A live list is an <seealso cref="System.Collections.Generic.IEnumerable{T}" /> that
-    /// can also be subscribed on to listen for changes, not quite unlike an
+    /// A live list can also be subscribed on to listen for changes, not quite unlike an
     /// <seealso cref="INotifyCollectionChanged" />. Unlike <seealso cref="INotifyCollectionChanged" />,
     /// however, a live list will generate add events for all current items in the list
-    /// on subscription.
+    /// on subscription, so subscription is the only method required to get all the contents
+    /// of the live list.
     /// </summary>
     /// <typeparam name="T">The item type of the list.</typeparam>
-    /// <seealso cref="System.Collections.Generic.IEnumerable{T}" />
-    public interface ILiveList<out T> : IEnumerable<T>
+    public interface ILiveList<out T>
     {
         IDisposable Subscribe(DLiveListObserver<T> observer, IObservable<Key> refreshRequested);
     }

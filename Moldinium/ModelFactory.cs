@@ -165,7 +165,8 @@ namespace IronStone.Moldinium
                     {
                         var method = type.GetMethod($"{prefix}_{property.Name}");
 
-                        info.PropertyImplementations[method] = implementation;
+                        if (method != null)
+                            info.PropertyImplementations[method] = implementation;
                     }
                 }
             }
