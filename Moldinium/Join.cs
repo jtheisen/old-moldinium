@@ -9,141 +9,123 @@ using System.Threading.Tasks;
 
 namespace IronStone.Moldinium
 {
-    //public interface ILiveLookoup<TKey, TElement> : ILiveList<ILiveListGrouping<TKey, TElement>>
-    //{
-    //    ILiveList<TElement> this[TKey key] { get; }
-    //}
+    public interface ILiveLookoup<TKey, TElement> : ILiveList<ILiveListGrouping<TKey, TElement>>, IDisposable
+    {
+        ILiveList<TElement> this[TKey key] { get; }
+    }
 
 
-    //public class TieLiveList<TSource> : ILiveList<TSource> // nonsense
-    //{
-    //    public TieLiveList(ILiveList<TSource> source)
-    //    {
-    //        this.source = source;
-    //    }
+    public class LiveLookup<TKey, TSource, TElement> : ILiveLookoup<TKey, TElement>
+    {
+        Func<TSource, TKey> keySelector;
+        Func<TSource, TElement> elementSelector;
+        Dictionary<TKey, GroupingAndSubject> groupingsAndSubjectsByKey;
+        Dictionary<Key, TKey> keysByKey;
 
-    //    public IDisposable Subscribe(DLiveListObserver<TSource> observer, IObservable<Key> refreshRequested)
-    //    {
-    //        source.Subscribe(Handle, refreshRequested2);
+        Subject<Key> refreshRequested;
 
-    //        var info = new ObserverInfo() { Observer = observer, RefreshRequested = refreshRequested };
+        LiveList<ILiveListGrouping<TKey, TElement>> groupings;
 
-    //        var subscription = new Disposable.Create(() => observers.Remove(info));
+        IDisposable subscription;
 
-    //        info.Subscription = subscription;
+        struct GroupingAndSubject
+        {
+            public readonly ILiveListGrouping<TKey, TElement> Grouping;
+            public readonly LiveListSubject<TElement> Subject;
 
-    //        observers.Add(info);
+            public GroupingAndSubject(ILiveListGrouping<TKey, TElement> grouping, LiveListSubject<TElement> tie)
+            {
+                Grouping = grouping;
+                Subject = tie;
+            }
+        }
 
-    //        return subscription;
-    //    }
+        public LiveLookup(ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, IEqualityComparer<TKey> comparer)
+        {
+            this.keySelector = keySelector;
+            this.elementSelector = elementSelector;
 
-    //    void Handle(ListEventType type, TSource item, Key key, Key? previousKey)
-    //    {
-    //        foreach (var info in observers)
-    //        {
-    //            try
-    //            {
-    //                info.Observer(type, item, key, previousKey);
-    //            }
-    //            catch (Exception)
-    //            {
-    //                throw; // FIXME
-    //            }
-    //        }
-    //    }
+            groupingsAndSubjectsByKey = new Dictionary<TKey, GroupingAndSubject>(comparer);
+            keysByKey = new Dictionary<Key, TKey>();
+            groupings = new LiveList<ILiveListGrouping<TKey, TElement>>();
 
-    //    ILiveList<TSource> source;
+            subscription = source.Subscribe(Handle, refreshRequested);
+        }
 
-    //    Subject<Key> refreshRequested2 = new Subject<Key>();
+        void Handle(ListEventType type, TSource item, Key key, Key? previousKey)
+        {
+            var lookupKey = keySelector(item); // FIXME: watchable support
 
-    //    class ObserverInfo
-    //    {
-    //        public DLiveListObserver<TSource> Observer;
-    //        public IDisposable Subscription;
-    //        public IObservable<Key> RefreshRequested;
-    //    }
+            GroupingAndSubject groupingAndSubject;
 
-    //    List<ObserverInfo> observers = new List<ObserverInfo>();
-    //}
+            switch (type)
+            {
+                case ListEventType.Add:
+                    if (!groupingsAndSubjectsByKey.TryGetValue(lookupKey, out groupingAndSubject))
+                    {
+                        var newKey = KeyHelper.Create();
+                        var liveList = LiveList.Create<TElement>((onNext, downwardsRefreshRequests) => {
+                            return null;
+                        });
+                        var subject = new LiveListSubject<TElement>();
+                        var grouping = new LiveListGrouping<TKey, TElement>(lookupKey, subject);
+                        groupingsAndSubjectsByKey[lookupKey] = groupingAndSubject = new GroupingAndSubject(grouping, subject);
+                        keysByKey[newKey] = lookupKey;
+                        groupings.Add(groupingAndSubject);
+                    }
 
-    //public class LiveLookup<TKey, TSource, TElement> : TieLiveList<ILiveListGrouping<TKey, TElement>>, ILiveLookoup<TKey, TElement>
-    //{
-    //    Func<TSource, TKey> keySelector;
-    //    Func<TSource, TElement> elementSelector;
-    //    Dictionary<TKey, KeyValuePair<ILiveListGrouping<TKey, TElement>, LiveList<TElement>>> dictionary;
+                    // FIXME: watchables
+                    var element = elementSelector(item);
 
-    //    public LiveLookup(ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, IEqualityComparer<TKey> comparer)
-    //    {
-    //        this.keySelector = keySelector;
-    //        this.elementSelector = elementSelector;
+                    groupingAndSubject.Subject.OnNext(type, element, key, previousKey);
 
-    //        this.dictionary = new Dictionary<TKey, KeyValuePair<ILiveListGrouping<TKey, TElement>, LiveList<TElement>>>(comparer);
+                    break;
+                case ListEventType.Remove:
+                    if (groupingsAndSubjectsByKey.TryGetValue(lookupKey, out groupingAndSubject))
+                    {
+                        // post
+                    }
 
-    //        source.Subscribe(Handle, refreshRequested);
-    //    }
+                    groupingsAndSubjectsByKey.Remove(lookupKey);
+                    break;
+            }
+        }
 
-    //    void Handle(ListEventType type, TSource item, Key key, Key? previousKey)
-    //    {
-    //        var lookupKey = keySelector(item); // FIXME: watchable support
+        public IDisposable Subscribe(DLiveListObserver<ILiveListGrouping<TKey, TElement>> observer, IObservable<Key> refreshRequested)
+        {
+            return groupings.Subscribe(observer, refreshRequested);
+        }
 
-    //        KeyValuePair<ILiveListGrouping<TKey, TElement>, LiveList<TElement>> value;
+        public void Dispose()
+        {
+            subscription.Dispose();
+        }
 
-    //        switch (type)
-    //        {
-    //            case ListEventType.Add:
-    //                if (!dictionary.TryGetValue(lookupKey, out value))
-    //                {
-    //                    var liveList = new LiveList<TElement>();
-    //                    var grouping = new LiveListGrouping<TKey, TElement>(lookupKey, liveList);
-    //                    dictionary[lookupKey] = value = new KeyValuePair<ILiveListGrouping<TKey, TElement>, LiveList<TElement>>(grouping, liveList);
-    //                }
+        public ILiveList<TElement> this[TKey key] { get { return groupingsAndSubjectsByKey[key].Value; } }
+    }
 
-    //                // post
+    public static partial class LiveList
+    {
+        public static ILiveList<TResult> GroupJoin<TOuter, TInner, TKey, TResult>(this ILiveList<TOuter> outer, ILiveList<TInner> inner, Func<TOuter, TKey> outerKeySelector, Func<TInner, TKey> innerKeySelector, Func<TOuter, ILiveList<TInner>, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)
+        {
+            LiveList.Create((onNext, asdf) =>
+            {
+                return new LiveLookup<TKey, TOuter, TOuter>(outer, outerKeySelector, s => s, comparer ?? EqualityComparer<TKey>.Default);
+            });
 
-    //                break;
-    //            case ListEventType.Remove:
-    //                if (dictionary.TryGetValue(lookupKey, out value))
-    //                {
-    //                    // post
-    //                }
 
-    //                dictionary.Remove(lookupKey);
-    //                break;
-    //        }
-    //    }
+        }
 
-    //    public IDisposable Subscribe(DLiveListObserver<ILiveListGrouping<TKey, TElement>> observer, IObservable<Key> refreshRequested)
-    //    {
-            
-    //    }
+        public static ILiveList<TResult> Join<TOuter, TInner, TKey, TResult>(this ILiveList<TOuter> outer, ILiveList<TInner> inner, Func<TOuter, TKey> outerKeySelector, Func<TInner, TKey> innerKeySelector, Func<TOuter, TInner, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)
+        {
+            return outer
+                .GroupJoin(inner, outerKeySelector, innerKeySelector, (o, il) => new { OuterItem = o, InnerList = il }, comparer)
+                .SelectMany(p => p.InnerList, (p, i) => resultSelector(p.OuterItem, i));
+        }
 
-    //    public ILiveList<TElement> this[TKey key] { get { return dictionary[key].Value; } }
-
-    //    Subject<Key> refreshRequested;
-    //}
-
-    //public static partial class LiveList
-    //{
-    //    public static ILiveList<TResult> GroupJoin<TOuter, TInner, TKey, TResult>(this ILiveList<TOuter> outer, ILiveList<TInner> inner, Func<TOuter, TKey> outerKeySelector, Func<TInner, TKey> innerKeySelector, Func<TOuter, ILiveList<TInner>, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)
-    //    {
-    //        LiveList.Create((onNext, asdf) =>
-    //        {
-    //            return new LiveLookup<TKey, TOuter, TOuter>(outer, outerKeySelector, s => s, comparer ?? EqualityComparer<TKey>.Default);
-    //        });
-
-            
-    //    }
-
-    //    public static ILiveList<TResult> Join<TOuter, TInner, TKey, TResult>(this ILiveList<TOuter> outer, ILiveList<TInner> inner, Func<TOuter, TKey> outerKeySelector, Func<TInner, TKey> innerKeySelector, Func<TOuter, TInner, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)
-    //    {
-    //        return outer
-    //            .GroupJoin(inner, outerKeySelector, innerKeySelector, (o, il) => new { OuterItem = o, InnerList = il }, comparer)
-    //            .SelectMany(p => p.InnerList, (p, i) => resultSelector(p.OuterItem, i));
-    //    }
-
-    //    public static ILiveLookoup<TKey, TElement> ToLookup<TSource, TKey, TElement>(this ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, IEqualityComparer<TKey> comparer)
-    //    {
-    //        return new LiveLookup<TKey, TSource, TElement>(source, keySelector, elementSelector, comparer);
-    //    }
-    //}
+        public static ILiveLookoup<TKey, TElement> ToLookup<TSource, TKey, TElement>(this ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, IEqualityComparer<TKey> comparer)
+        {
+            return new LiveLookup<TKey, TSource, TElement>(source, keySelector, elementSelector, comparer);
+        }
+    }
 }
