@@ -54,11 +54,12 @@ namespace IronStone.Moldinium
         void Handle(ListEventType type, TSource item, Key key, Key? previousKey)
         {
             LiveListGrouping<TKey, TElement> grouping;
+            TKey groupingKey;
 
             switch (type)
             {
                 case ListEventType.Add:
-                    var groupingKey = keySelector(item); // FIXME: watchable support
+                    groupingKey = keySelector(item); // FIXME: watchable support
 
                     if (!groupingsByGroupingKey.TryGetValue(groupingKey, out grouping))
                     {
@@ -78,12 +79,20 @@ namespace IronStone.Moldinium
 
                     break;
                 case ListEventType.Remove:
-                    var groupingKeyToRemove = groupingKeysByKey[key];
+                    groupingKey = groupingKeysByKey[key];
 
-                    if (!groupingsByGroupingKey.TryGetValue(groupingKeyToRemove, out grouping))
+                    if (!groupingsByGroupingKey.TryGetValue(groupingKey, out grouping))
                         throw new Exception("Grouping key not found.");
 
-                    grouping.OnNext(type, item, key, previousKey);
+                    // FIXME: Hmmmm...
+                    grouping.OnNext(type, default(TElement), key, previousKey);
+
+                    if (grouping.Count == 0)
+                    {
+                        groupingsByGroupingKey.Remove(groupingKey);
+                        groupingKeysByKey.Remove(key);
+                        groupings.Remove(grouping);
+                    }
 
                     groupingsByGroupingKey.Remove(groupingKey);
                     break;
