@@ -30,8 +30,8 @@ namespace IronStone.Moldinium
     {
         Func<TSource, TKey> keySelector;
         Func<TSource, TElement> elementSelector;
-        Dictionary<TKey, LiveListGrouping<TKey, TElement>> groupingsByKey;
-        Dictionary<Key, TKey> keysByKey;
+        Dictionary<TKey, LiveListGrouping<TKey, TElement>> groupingsByGroupingKey;
+        Dictionary<Key, TKey> groupingKeysByKey;
 
         Subject<Key> refreshRequested;
 
@@ -44,8 +44,8 @@ namespace IronStone.Moldinium
             this.keySelector = keySelector;
             this.elementSelector = elementSelector;
 
-            groupingsByKey = new Dictionary<TKey, LiveListGrouping<TKey, TElement>>(comparer);
-            keysByKey = new Dictionary<Key, TKey>();
+            groupingsByGroupingKey = new Dictionary<TKey, LiveListGrouping<TKey, TElement>>(comparer);
+            groupingKeysByKey = new Dictionary<Key, TKey>();
             groupings = new LiveList<ILiveListGrouping<TKey, TElement>>();
 
             subscription = source.Subscribe(Handle, refreshRequested);
@@ -53,21 +53,21 @@ namespace IronStone.Moldinium
 
         void Handle(ListEventType type, TSource item, Key key, Key? previousKey)
         {
-            var lookupKey = keySelector(item); // FIXME: watchable support
-
             LiveListGrouping<TKey, TElement> grouping;
 
             switch (type)
             {
                 case ListEventType.Add:
-                    if (!groupingsByKey.TryGetValue(lookupKey, out grouping))
+                    var groupingKey = keySelector(item); // FIXME: watchable support
+
+                    if (!groupingsByGroupingKey.TryGetValue(groupingKey, out grouping))
                     {
                         var newKey = KeyHelper.Create();
                         var liveList = LiveList.Create<TElement>((onNext, downwardsRefreshRequests) => {
                             return null;
                         });
-                        groupingsByKey[lookupKey] = new LiveListGrouping<TKey, TElement>(lookupKey);
-                        keysByKey[newKey] = lookupKey;
+                        groupingsByGroupingKey[groupingKey] = new LiveListGrouping<TKey, TElement>(groupingKey);
+                        groupingKeysByKey[newKey] = groupingKey;
                         groupings.Add(grouping);
                     }
 
@@ -78,12 +78,14 @@ namespace IronStone.Moldinium
 
                     break;
                 case ListEventType.Remove:
-                    if (groupingsByKey.TryGetValue(lookupKey, out grouping))
-                    {
-                        // post
-                    }
+                    var groupingKeyToRemove = groupingKeysByKey[key];
 
-                    groupingsByKey.Remove(lookupKey);
+                    if (!groupingsByGroupingKey.TryGetValue(groupingKeyToRemove, out grouping))
+                        throw new Exception("Grouping key not found.");
+
+                    grouping.OnNext(type, item, key, previousKey);
+
+                    groupingsByGroupingKey.Remove(groupingKey);
                     break;
             }
         }
@@ -98,7 +100,7 @@ namespace IronStone.Moldinium
             subscription.Dispose();
         }
 
-        public ILiveList<TElement> this[TKey key] { get { return groupingsByKey[key].Value; } }
+        public ILiveList<TElement> this[TKey key] { get { return groupingsByGroupingKey[key].Value; } }
     }
 
     public static partial class LiveList
