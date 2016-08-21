@@ -32,7 +32,7 @@ namespace SampleModel
 
         // Problem: this is inefficient in the presence of many orders
         //public ILiveList<PositionVm> Positions { get { return from p in Ctx.World.Positions.AsLiveList() /*orderby p.Index*/ where p.Order == this select p; } }
-        public ILiveList<PositionVm> Positions { get { return from p in Ctx.World.Positions.AsLiveList() /*orderby p.Index*/ where p.Order == this select p; } }
+        public ILiveList<PositionVm> Positions { get { return from p in Ctx.World.Positions.AsLiveList() orderby p.Index where p.Order == this select p; } }
 
         //public virtual Decimal Sum { get { return Positions.Select(p => p.Total).Sum(); } }
     }

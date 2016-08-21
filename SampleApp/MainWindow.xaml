@@ -10,7 +10,7 @@
     <Window.Resources>
         <DataTemplate x:Key="OrderTemplate" DataType="model:OrderVm">
             <Grid>
-                <DataGrid AutoGenerateColumns="False" ItemsSource="{Binding Positions}" Margin="10">
+                <DataGrid AutoGenerateColumns="False" IsReadOnly="True" ItemsSource="{Binding Positions}" Margin="10">
                     <DataGrid.Columns>
                         <DataGridTextColumn Binding="{Binding Index}" />
                         <DataGridTextColumn Binding="{Binding Total}" />

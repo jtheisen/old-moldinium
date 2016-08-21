@@ -24,6 +24,7 @@ namespace IronStone.Moldinium
                 {
                     if (null != selfSubscription) throw new Exception(
                         "Unexpected state in ConcreteLiveList on collection change subscription.");
+                    manifestation = new List<Key>();
                     selfSubscription = subscribe(ProcessEvent, null);
                 }
 
@@ -39,6 +40,7 @@ namespace IronStone.Moldinium
                         "Unexpected state in ConcreteLiveList on collection change unsubscription.");
                     selfSubscription.Dispose();
                     selfSubscription = null;
+                    manifestation = null;
                 }
             }
         }
@@ -67,12 +69,17 @@ namespace IronStone.Moldinium
             switch (type)
             {
                 case ListEventType.Add:
+                    var previousKeyIndex = previousKey.HasValue ? manifestation.IndexOf(previousKey.Value) + 1 : 0;
+                    manifestation.Insert(previousKeyIndex, key);
                     collectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(
-                        NotifyCollectionChangedAction.Add, item));
+                        NotifyCollectionChangedAction.Add, item, previousKeyIndex));
                     break;
                 case ListEventType.Remove:
+                    var index = manifestation.IndexOf(key);
+                    if (index < 0) throw new Exception("Key not in list.");
                     collectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(
-                        NotifyCollectionChangedAction.Remove, item));
+                        NotifyCollectionChangedAction.Remove, item, index));
+                    manifestation.RemoveAt(index);
                     break;
                 default:
                     break;
@@ -81,8 +88,10 @@ namespace IronStone.Moldinium
 
         Func<DLiveListObserver<T>, IObservable<Key>, IDisposable> subscribe;
 
-        IDisposable selfSubscription;
+        IDisposable selfSubscription = null;
 
-        NotifyCollectionChangedEventHandler collectionChanged;
+        List<Key> manifestation = null;
+
+        NotifyCollectionChangedEventHandler collectionChanged = null;
     }
 }

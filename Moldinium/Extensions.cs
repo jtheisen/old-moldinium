@@ -12,6 +12,8 @@ namespace IronStone.Moldinium
         {
             var lst = new List<TSource>();
 
+            var x = LiveIndex.InstanceCount;
+
             using (source.Subscribe((type, item, key, previousKey) => lst.Add(item), null)) { }
 
             return lst;

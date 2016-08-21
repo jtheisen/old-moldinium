@@ -37,6 +37,11 @@ namespace IronStone.Moldinium
         {
             return Id.CompareTo(other.Id);
         }
+
+        public override string ToString()
+        {
+            return Id.ToString().Substring(0, 6);
+        }
     }
 
     public static class KeyHelper
