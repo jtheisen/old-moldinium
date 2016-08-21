@@ -30,6 +30,52 @@ namespace IronStone.Moldinium
         }
     }
 
+    public abstract class AbstractComparerEvaluator<TSource>
+    {
+        public abstract void SetLhs(TSource value);
+        public abstract void SetRhs(TSource value);
+
+        public abstract Int32 Compare();
+    }
+
+    public class NestableComparerEvaluator<TSource, TKey> : AbstractComparerEvaluator<TSource>
+    {
+        AbstractComparerEvaluator<TSource> nested;
+
+        Func<TSource, TKey> keySelector;
+
+        IComparer<TKey> comparer;
+
+        TKey lhs, rhs;
+
+        public NestableComparerEvaluator(Func<TSource, TKey> keySelector, IComparer<TKey> comparer, AbstractComparerEvaluator<TSource> nested = null)
+        {
+            this.nested = nested;
+            this.keySelector = keySelector;
+            this.comparer = comparer;
+        }
+
+        public override Int32 Compare()
+        {
+            var result = nested?.Compare() ?? 0;
+            if (result != 0) return result;
+            return comparer.Compare(lhs, rhs);
+        }
+
+        public override void SetLhs(TSource value)
+        {
+            nested.SetLhs(value);
+            lhs = keySelector.Invoke(value);
+        }
+
+        public override void SetRhs(TSource value)
+        {
+            nested.SetRhs(value);
+            rhs = keySelector.Invoke(value);
+        }
+    }
+
+
     public interface IOrderedLiveList<out TSource> : ILiveList<TSource>
     {
         IDisposable Subscribe(DLiveListObserver<TSource> observer, IObservable<Key> refreshRequested, IComparer<TSource> comparer);
@@ -64,13 +110,11 @@ namespace IronStone.Moldinium
         }
     }
 
-    public class ConcreteOrderedLiveList<TSource> : IOrderedLiveList<TSource>
+    public class ChainedOrderedLiveList<TSource> : IOrderedLiveList<TSource>
     {
-        Func<DLiveListObserver<TSource>, IObservable<Key>, IComparer<TSource>, IDisposable> subscribe;
-
-        public ConcreteOrderedLiveList(Func<DLiveListObserver<TSource>, IObservable<Key>, IComparer<TSource>, IDisposable> subscribe)
+        public ChainedOrderedLiveList(IOrderedLiveList<TSource> source, IComparer<TSource> comparer)
         {
-            this.subscribe = subscribe;
+            
         }
 
         public ILiveIndex<TSource> MakeIndex()
