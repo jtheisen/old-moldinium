@@ -14,12 +14,23 @@ namespace IronStone.Moldinium
         ILiveList<TElement> this[TKey key] { get; }
     }
 
+    public class LiveListGrouping<TKey, TSource> : LiveListSubject<TSource>, ILiveListGrouping<TKey, TSource>
+    {
+        TKey key;
+
+        public LiveListGrouping(TKey key)
+        {
+            this.key = key;
+        }
+
+        public TKey Key { get { return key; } }
+    }
 
     public class LiveLookup<TKey, TSource, TElement> : ILiveLookoup<TKey, TElement>
     {
         Func<TSource, TKey> keySelector;
         Func<TSource, TElement> elementSelector;
-        Dictionary<TKey, GroupingAndSubject> groupingsAndSubjectsByKey;
+        Dictionary<TKey, LiveListGrouping<TKey, TElement>> groupingsByKey;
         Dictionary<Key, TKey> keysByKey;
 
         Subject<Key> refreshRequested;
@@ -28,24 +39,12 @@ namespace IronStone.Moldinium
 
         IDisposable subscription;
 
-        struct GroupingAndSubject
-        {
-            public readonly ILiveListGrouping<TKey, TElement> Grouping;
-            public readonly LiveListSubject<TElement> Subject;
-
-            public GroupingAndSubject(ILiveListGrouping<TKey, TElement> grouping, LiveListSubject<TElement> tie)
-            {
-                Grouping = grouping;
-                Subject = tie;
-            }
-        }
-
         public LiveLookup(ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, IEqualityComparer<TKey> comparer)
         {
             this.keySelector = keySelector;
             this.elementSelector = elementSelector;
 
-            groupingsAndSubjectsByKey = new Dictionary<TKey, GroupingAndSubject>(comparer);
+            groupingsByKey = new Dictionary<TKey, LiveListGrouping<TKey, TElement>>(comparer);
             keysByKey = new Dictionary<Key, TKey>();
             groupings = new LiveList<ILiveListGrouping<TKey, TElement>>();
 
@@ -56,37 +55,35 @@ namespace IronStone.Moldinium
         {
             var lookupKey = keySelector(item); // FIXME: watchable support
 
-            GroupingAndSubject groupingAndSubject;
+            LiveListGrouping<TKey, TElement> grouping;
 
             switch (type)
             {
                 case ListEventType.Add:
-                    if (!groupingsAndSubjectsByKey.TryGetValue(lookupKey, out groupingAndSubject))
+                    if (!groupingsByKey.TryGetValue(lookupKey, out grouping))
                     {
                         var newKey = KeyHelper.Create();
                         var liveList = LiveList.Create<TElement>((onNext, downwardsRefreshRequests) => {
                             return null;
                         });
-                        var subject = new LiveListSubject<TElement>();
-                        var grouping = new LiveListGrouping<TKey, TElement>(lookupKey, subject);
-                        groupingsAndSubjectsByKey[lookupKey] = groupingAndSubject = new GroupingAndSubject(grouping, subject);
+                        groupingsByKey[lookupKey] = new LiveListGrouping<TKey, TElement>(lookupKey);
                         keysByKey[newKey] = lookupKey;
-                        groupings.Add(groupingAndSubject);
+                        groupings.Add(grouping);
                     }
 
                     // FIXME: watchables
                     var element = elementSelector(item);
 
-                    groupingAndSubject.Subject.OnNext(type, element, key, previousKey);
+                    grouping.OnNext(type, element, key, previousKey);
 
                     break;
                 case ListEventType.Remove:
-                    if (groupingsAndSubjectsByKey.TryGetValue(lookupKey, out groupingAndSubject))
+                    if (groupingsByKey.TryGetValue(lookupKey, out grouping))
                     {
                         // post
                     }
 
-                    groupingsAndSubjectsByKey.Remove(lookupKey);
+                    groupingsByKey.Remove(lookupKey);
                     break;
             }
         }
@@ -101,7 +98,7 @@ namespace IronStone.Moldinium
             subscription.Dispose();
         }
 
-        public ILiveList<TElement> this[TKey key] { get { return groupingsAndSubjectsByKey[key].Value; } }
+        public ILiveList<TElement> this[TKey key] { get { return groupingsByKey[key].Value; } }
     }
 
     public static partial class LiveList

@@ -40,7 +40,19 @@ namespace IronStone.Moldinium
                     throw; // FIXME
                 }
             }
+
+            switch (type)
+            {
+                case ListEventType.Add:
+                    ++Count;
+                    break;
+                case ListEventType.Remove:
+                    --Count;
+                    break;
+            }
         }
+
+        public Int32 Count { get; private set; }
 
         Subject<Key> refreshRequested2 = new Subject<Key>();
 
@@ -52,26 +64,6 @@ namespace IronStone.Moldinium
         }
 
         List<ObserverInfo> observers = new List<ObserverInfo>();
-    }
-
-    public class LiveListGrouping<TKey, TSource> : ILiveListGrouping<TKey, TSource>
-    {
-        TKey key;
-
-        ILiveList<TSource> nested;
-
-        public LiveListGrouping(TKey key, ILiveList<TSource> nested)
-        {
-            this.key = key;
-            this.nested = nested;
-        }
-
-        public TKey Key { get { return key; } }
-
-        public IDisposable Subscribe(DLiveListObserver<TSource> observer, IObservable<Key> refreshRequested)
-        {
-            return nested.Subscribe(observer, refreshRequested);
-        }
     }
 
     public static partial class LiveList
