@@ -70,25 +70,25 @@ namespace IronStone.Moldinium
         AbstractComparerEvaluator<TSource> nested;
 
         Func<TSource, TKey> keySelector;
-
         IComparer<TKey> comparer;
+        Int32 direction;
 
         TSource lhsv, rhsv;
         TKey lhs, rhs;
 
-        public NestedComparerEvaluator(Func<TSource, TKey> keySelector, IComparer<TKey> comparer, AbstractComparerEvaluator<TSource> nested = null)
+        public NestedComparerEvaluator(Func<TSource, TKey> keySelector, IComparer<TKey> comparer, Int32 direction, AbstractComparerEvaluator<TSource> nested = null)
         {
             this.nested = nested;
             this.keySelector = keySelector;
             this.comparer = comparer;
+            this.direction = direction;
         }
 
         public override Int32 Compare()
         {
             var result = nested?.Compare() ?? 0;
             if (result != 0) return result;
-            result = comparer.Compare(lhs, rhs);
-            if ((result != 0) && (lhsv.Equals(rhsv))) System.Diagnostics.Debugger.Break();
+            result = direction * comparer.Compare(lhs, rhs);
             return result;
         }
 
@@ -159,16 +159,19 @@ namespace IronStone.Moldinium
         }
     }
 
-    public static class LiveIndex
-    {
-        public static Int32 InstanceCount { get; set; }
-    }
-
     public class LiveIndex<TSource> : ILiveIndex<TSource>
     {
         AbstractComparerEvaluator<TSource> evaluator;
 
-        static Guid Id = Guid.NewGuid();
+        Subject<Key> refreshRequest = new Subject<Key>();
+
+        Action<TSource, Key> handleOnChange;
+
+        Func<TSource, Unit> evaluationSelector;
+
+        IDisposable sourceSubscription;
+
+        LiveList<ThingWithKey<TSource>> list = new LiveList<ThingWithKey<TSource>>();
 
         internal LiveIndex(ILiveList<TSource> source, AbstractComparerEvaluator<TSource> evaluator)
         {
@@ -176,7 +179,6 @@ namespace IronStone.Moldinium
             handleOnChange = (item, key) => refreshRequest.OnNext(key);
             evaluationSelector = item => { evaluator.SetLhs(item); return Unit.Default; };
             sourceSubscription = source.Subscribe(Handle, refreshRequest);
-            ++LiveIndex.InstanceCount;
         }
 
         public IDisposable Subscribe(DLiveListObserver<TSource> observer, IObservable<Key> refreshRequested)
@@ -202,17 +204,7 @@ namespace IronStone.Moldinium
                     break;
                 case ListEventType.Remove:
                     var removalIndex = list.FindIndex(twk2 => evaluator.Compare(twk, twk2) == 0);
-                    if (removalIndex < 0)
-                    {
-                        var potential = list.FirstOrDefault(twk2 => twk2.Key == key);
-
-                        if (potential.Thing != null)
-                        {
-                            var isSame = potential.Thing.Equals(item);
-                        }
-
-                        throw new Exception("Item had not been inserted.");
-                    }
+                    if (removalIndex < 0) throw new Exception("Item had not been inserted.");
                     Remove(removalIndex);
                     break;
             }
@@ -223,7 +215,6 @@ namespace IronStone.Moldinium
             sourceSubscription.Dispose();
             for (int i = list.Count - 1; i >= 0; --i)
                 Remove(i);
-            --LiveIndex.InstanceCount;
         }
 
         void Remove(Int32 i)
@@ -232,16 +223,6 @@ namespace IronStone.Moldinium
             list.RemoveAt(i);
             removed.Subscriptions.Dispose();
         }
-
-        Subject<Key> refreshRequest = new Subject<Key>();
-
-        Action<TSource, Key> handleOnChange;
-
-        Func<TSource, Unit> evaluationSelector;
-
-        IDisposable sourceSubscription;
-
-        LiveList<ThingWithKey<TSource>> list = new LiveList<ThingWithKey<TSource>>();
     }
 
     class CombinatingComparer<TKey, TSource> : IComparer<TSource>
@@ -275,13 +256,24 @@ namespace IronStone.Moldinium
             return new TrivialOrderedLiveList<TSource>(source).ThenBy(keySelector, comparer);
         }
 
+        public static IOrderedLiveList<TSource> OrderByDescending<TSource, TKey>(
+            this ILiveList<TSource> source, Func<TSource, TKey> keySelector, IComparer<TKey> comparer = null)
+        {
+            return new TrivialOrderedLiveList<TSource>(source).ThenByDescending(keySelector, comparer);
+        }
+
         public static IOrderedLiveList<TSource> ThenBy<TSource, TKey>(
             this IOrderedLiveList<TSource> source, Func<TSource, TKey> keySelector, IComparer<TKey> comparer = null)
         {
             return new NestedOrderedLiveList<TSource>(source, evaluator =>
-                new NestedComparerEvaluator<TSource, TKey>(keySelector, comparer ?? Comparer<TKey>.Default, evaluator));
+                new NestedComparerEvaluator<TSource, TKey>(keySelector, comparer ?? Comparer<TKey>.Default, 1, evaluator));
         }
 
-        // FIXME: the descending versions
+        public static IOrderedLiveList<TSource> ThenByDescending<TSource, TKey>(
+            this IOrderedLiveList<TSource> source, Func<TSource, TKey> keySelector, IComparer<TKey> comparer = null)
+        {
+            return new NestedOrderedLiveList<TSource>(source, evaluator =>
+                new NestedComparerEvaluator<TSource, TKey>(keySelector, comparer ?? Comparer<TKey>.Default, -1, evaluator));
+        }
     }
 }

@@ -63,9 +63,9 @@ namespace UnitTests.Lists
 
                 Action doCheck = () =>
                 {
-                    var expected = expectedSelector(source).ToArray();
+                    var expected = expectedSelector(source.ToEnumerable()).ToArray();
 
-                    //CollectionAssert.AreEqual(expected, actual);
+                    CollectionAssert.AreEqual(expected, actual);
                 };
 
                 using (source.Subscribe((type, item, key, previousKey) =>
