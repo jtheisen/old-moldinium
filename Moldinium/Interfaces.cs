@@ -104,12 +104,4 @@ namespace IronStone.Moldinium
 
         IObservable<Key> RefreshRequested { get; }
     }
-
-    public static class Ext2
-    {
-        public static IDisposable Subscribe<T>(this ILiveList<T> source, ILiveListObserver<T> observer)
-        {
-            return source.Subscribe((type, item, key, previousKey) => observer.OnNext(type, item, key, previousKey), observer.RefreshRequested);
-        }
-    }
 }

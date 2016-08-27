@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 
 namespace IronStone.Moldinium
@@ -8,11 +9,14 @@ namespace IronStone.Moldinium
     /// </summary>
     public static partial class LiveList
     {
+        public static IDisposable Subscribe<T>(this ILiveList<T> source, ILiveListObserver<T> observer)
+        {
+            return source.Subscribe((type, item, key, previousKey) => observer.OnNext(type, item, key, previousKey), observer.RefreshRequested);
+        }
+
         public static IEnumerable<TSource> ToEnumerable<TSource>(this ILiveList<TSource> source)
         {
             var lst = new List<TSource>();
-
-            var x = LiveIndex.InstanceCount;
 
             using (source.Subscribe((type, item, key, previousKey) => lst.Add(item), null)) { }
 
