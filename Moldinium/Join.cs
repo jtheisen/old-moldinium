@@ -9,6 +9,11 @@ using System.Threading.Tasks;
 
 namespace IronStone.Moldinium
 {
+    public interface ILiveListGrouping<TKey, TSource> : ILiveList<TSource>
+    {
+        TKey Key { get; }
+    }
+
     public interface ILiveLookoup<TKey, TElement> : ILiveList<ILiveListGrouping<TKey, TElement>>, IDisposable
     {
         ILiveList<TElement> this[TKey key] { get; }
@@ -37,7 +42,14 @@ namespace IronStone.Moldinium
 
         LiveList<ILiveListGrouping<TKey, TElement>> groupings;
 
+        Dictionary<Key, Attachment> manifestation;
+
         IDisposable subscription;
+
+        struct Attachment
+        {
+            public TElement element;
+        }
 
         public LiveLookup(ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, IEqualityComparer<TKey> comparer)
         {
@@ -48,6 +60,8 @@ namespace IronStone.Moldinium
             groupingKeysByKey = new Dictionary<Key, TKey>();
             groupings = new LiveList<ILiveListGrouping<TKey, TElement>>();
 
+            manifestation = new Dictionary<Key, Attachment>();
+
             subscription = source.Subscribe(Handle, refreshRequested);
         }
 
@@ -55,6 +69,8 @@ namespace IronStone.Moldinium
         {
             LiveListGrouping<TKey, TElement> grouping;
             TKey groupingKey;
+
+            Attachment attachment;
 
             switch (type)
             {
@@ -75,6 +91,10 @@ namespace IronStone.Moldinium
                     // FIXME: watchables
                     var element = elementSelector(item);
 
+                    attachment.element = element;
+
+                    manifestation[key] = attachment;
+
                     grouping.OnNext(type, element, key, previousKey);
 
                     break;
@@ -84,8 +104,10 @@ namespace IronStone.Moldinium
                     if (!groupingsByGroupingKey.TryGetValue(groupingKey, out grouping))
                         throw new Exception("Grouping key not found.");
 
-                    // FIXME: Hmmmm...
-                    grouping.OnNext(type, default(TElement), key, previousKey);
+                    if (!manifestation.TryGetValue(key, out attachment))
+                        throw new Exception("Key not found.");
+
+                    grouping.OnNext(type, attachment.element, key, previousKey);
 
                     if (grouping.Count == 0)
                     {
@@ -114,6 +136,31 @@ namespace IronStone.Moldinium
 
     public static partial class LiveList
     {
+        public static ILiveList<ILiveListGrouping<TKey, TSource>> GroupBy<TSource, TKey>(this ILiveList<TSource> source, Func<TSource, TKey> keySelector, IEqualityComparer<TKey> comparer = null)
+        {
+            throw new NotImplementedException(); // FIXME
+        }
+
+        public static ILiveList<TResult> GroupBy<TSource, TKey, TResult>(this ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TKey, ILiveList<TSource>, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)
+        {
+            return source.GroupBy(keySelector, comparer).Select(g => resultSelector(g.Key, g));
+        }
+
+        //public static ILiveList<ILiveListGrouping<TKey, TElement>> GroupBy<TSource, TKey, TElement>(this ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, IEqualityComparer<TKey> comparer = null)
+        //{
+        //    return source.ToLookup(keySelector, elementSelector, comparer);
+
+        //    // FIXME: Having the two selector's evaluated outside of the lookup seems easier, but what are the performance implications?
+
+        //    //return source.GroupBy(keySelector, comparer).Select(g => new LiveListGrouping<TKey, TElement>(g.Key, g.Select(elementSelector)));
+        //}
+
+        public static IEnumerable<TResult> GroupBy<TSource, TKey, TElement, TResult>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, Func<TKey, IEnumerable<TElement>, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)
+        {
+            return source.GroupBy(keySelector, comparer).Select(g => resultSelector(g.Key, g.Select(elementSelector)));
+        }
+
+
         public static ILiveList<TResult> GroupJoin<TOuter, TInner, TKey, TResult>(this ILiveList<TOuter> outer, ILiveList<TInner> inner, Func<TOuter, TKey> outerKeySelector, Func<TInner, TKey> innerKeySelector, Func<TOuter, ILiveList<TInner>, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)
         {
             LiveList.Create((onNext, asdf) =>
