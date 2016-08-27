@@ -10,5 +10,12 @@ namespace IronStone.Moldinium
         {
             return source.HasValue ? dictionary[source.Value] : (Key?)null;
         }
+
+        public static void DisposeSafely(ref IDisposable disposable)
+        {
+            if (disposable == null) throw new Exception("Can't dispose null disposable.");
+            disposable.Dispose();
+            disposable = null;
+        }
     }
 }

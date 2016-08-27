@@ -11,15 +11,13 @@ namespace IronStone.Moldinium
         {
             var info = new ObserverInfo() { Observer = observer, RefreshRequested = refreshRequested };
 
-            var subscription = Disposable.Create(() => observers.Remove(info));
+            info.Subscription = Disposable.Create(() => observers.Remove(info));
 
-            info.Subscription = subscription;
-
-            info.refreshRequestSubscription = refreshRequested.Subscribe(refreshRequested2);
+            info.refreshRequestSubscription = refreshRequested.Subscribe(inboundRefreshRequested);
 
             observers.Add(info);
 
-            return subscription;
+            return info.Subscription;
         }
 
         public void OnNext(ListEventType type, TSource item, Key key, Key? previousKey)
@@ -47,11 +45,11 @@ namespace IronStone.Moldinium
             }
         }
 
-        public IObservable<Key> RefreshRequested => refreshRequested2;
+        public IObservable<Key> RefreshRequested => inboundRefreshRequested;
 
         public Int32 Count { get; private set; }
 
-        Subject<Key> refreshRequested2 = new Subject<Key>();
+        Subject<Key> inboundRefreshRequested = new Subject<Key>();
 
         class ObserverInfo
         {

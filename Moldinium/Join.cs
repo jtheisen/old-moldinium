@@ -169,112 +169,18 @@ namespace IronStone.Moldinium
 
     public static partial class LiveList
     {
-        public static IGroupedLiveList<TKey, TSource> GroupBy<TSource, TKey>(this ILiveList<TSource> source, Func<TSource, TKey> keySelector, IEqualityComparer<TKey> comparer = null)
+        static ILiveList<DoubleGroupByInfo<TKey, TOuter, TInner>> DoubleGroupBy<TOuter, TInner, TKey>(this ILiveList<TOuter> outer, ILiveList<TInner> inner, Func<TOuter, TKey> outerKeySelector, Func<TInner, TKey> innerKeySelector, IEqualityComparer<TKey> comparer = null)
         {
-            return new GroupedLivedList<TKey, TSource, TSource>(source, keySelector, s => s, comparer);
-        }
-
-        public static IGroupedLiveList<TKey, TElement> GroupBy<TSource, TKey, TElement>(this ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, IEqualityComparer<TKey> comparer = null)
-        {
-            return new GroupedLivedList<TKey, TSource, TElement>(source, keySelector, elementSelector, comparer);
-        }
-
-        public static ILiveList<TResult> GroupBy<TSource, TKey, TResult>(this ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TKey, ILiveList<TSource>, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)
-        {
-            return source.GroupBy(keySelector, comparer).Select(g => resultSelector(g.Key, g));
-        }
-
-        public static ILiveList<TResult> GroupBy<TSource, TKey, TElement, TResult>(this ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, Func<TKey, ILiveList<TElement>, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)
-        {
-            return source.GroupBy(keySelector, elementSelector, comparer).Select(g => resultSelector(g.Key, g));
-        }
-
-        public static ILiveList<TResult> Join2<TOuter, TInner, TKey, TResult>(this ILiveList<TOuter> outer, ILiveList<TInner> inner, Func<TOuter, TKey> outerKeySelector, Func<TInner, TKey> innerKeySelector, Func<TOuter, TInner, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)
-        {
-            return LiveList.Create((onNext, downwardsRefreshRequest) =>
+            return LiveList.Create<DoubleGroupByInfo<TKey, TOuter, TInner>>((onNext, downwardsRefreshRequest) =>
             {
                 var outerLookup = outer.ToLookup(outerKeySelector, comparer);
                 var innerLookup = inner.ToLookup(innerKeySelector, comparer);
 
-                var keyMap = new Dictionary<ThingWithKey<Key>, Key>();
-
-                var outerSubscription = outer.Subscribe((type, item, key, previousKey) =>
-                {
-                    var items = innerLookup[innerKeySelector(item)];
-
-                    items.Subscribe((type2, item2, key2, previousKey2) =>
-                    {
-                        var result = resultSelector(item2, item);
-
-                        onNext(type, result, ?, ?);
-                    }, null);
-                });
-
-                var innerSubscription = inner.Subscribe((type, item, key, previousKey) =>
-                {
-                    var items = outerLookup[outerKeySelector(item)];
-
-                    items.Subscribe((type2, item2, key2, previousKey2) =>
-                    {
-                        var result = resultSelector(item, item2);
-
-                        onNext(type, result, ?, ?);
-                    }, null);
-                });
-
-                return new CompositeDisposable(
-                    innerSubscription,
-                    outerSubscription,
-                    innerLookup,
-                    outerLookup);
-            });
-        }
-
-        struct KeyPair : IEquatable<KeyPair>
-        {
-            public Key innerKey;
-            public Key outerKey;
-
-            public override Int32 GetHashCode()
-            {
-                return innerKey.GetHashCode() ^ outerKey.GetHashCode();
-            }
-
-            public override Boolean Equals(Object obj)
-            {
-                var other = (KeyPair?)obj;
-                return other?.Equals(this) ?? false;
-            }
-
-            public Boolean Equals(KeyPair other)
-            {
-                return innerKey.Equals(other.innerKey) && outerKey.Equals(other.outerKey);
-            }
-        }
-
-        struct GroupieInfo<TKey, TOuter, TInner>
-        {
-            public Key key;
-            public TKey lkey;
-            public LiveListSubject<TOuter> outerSubject;
-            public LiveListSubject<TInner> innerSubject;
-            public IDisposable outerSubscription;
-            public IDisposable innerSubscription;
-            //public Dictionary<KeyPair, Key> forwardKeyMapping;
-        }
-
-        static ILiveList<GroupieInfo<TKey, TOuter, TInner>> Groupie<TOuter, TInner, TKey>(this ILiveList<TOuter> outer, ILiveList<TInner> inner, Func<TOuter, TKey> outerKeySelector, Func<TInner, TKey> innerKeySelector, IEqualityComparer<TKey> comparer = null)
-        {
-            return LiveList.Create<GroupieInfo<TKey, TOuter, TInner>>((onNext, downwardsRefreshRequest) =>
-            {
-                var outerLookup = outer.ToLookup(outerKeySelector, comparer);
-                var innerLookup = inner.ToLookup(innerKeySelector, comparer);
-
-                var groups = new Dictionary<TKey, GroupieInfo<TKey, TOuter, TInner>>();
+                var groups = new Dictionary<TKey, DoubleGroupByInfo<TKey, TOuter, TInner>>();
 
                 var outerSubscription = outerLookup.Subscribe((type, item, key, previousKey) =>
                 {
-                    GroupieInfo<TKey, TOuter, TInner> group;
+                    DoubleGroupByInfo<TKey, TOuter, TInner> group;
 
                     var found = groups.TryGetValue(item.Key, out group);
 
@@ -291,14 +197,12 @@ namespace IronStone.Moldinium
                                 onNext(ListEventType.Add, group, group.key, null);
                             }
 
-                            
-                            group.outerSubscription = item.Subscribe((type2, item2, key2, previousKey2) => group.outerSubject.OnNext(type2, item2, key2, previousKey2), null);
+                            group.outerSubscription = item.Subscribe(group.outerSubject);
                             break;
                         case ListEventType.Remove:
                             if (!found) throw new Exception("Key not found.");
 
-                            group.outerSubscription.Dispose();
-                            group.outerSubscription = null;
+                            InternalExtensions.DisposeSafely(ref group.outerSubscription);
 
                             if (group.outerSubscription == null && group.innerSubscription == null)
                                 onNext(ListEventType.Remove, group, group.key, null);
@@ -308,7 +212,7 @@ namespace IronStone.Moldinium
 
                 var innerSubscription = innerLookup.Subscribe((type, item, key, previousKey) =>
                 {
-                    GroupieInfo<TKey, TOuter, TInner> group;
+                    DoubleGroupByInfo<TKey, TOuter, TInner> group;
 
                     var found = groups.TryGetValue(item.Key, out group);
 
@@ -325,13 +229,12 @@ namespace IronStone.Moldinium
                                 onNext(ListEventType.Add, group, group.key, null);
                             }
 
-                            group.innerSubscription = item.Subscribe((type2, item2, key2, previousKey2) => group.innerSubject.OnNext(type2, item2, key2, previousKey2), null);
+                            group.innerSubscription = item.Subscribe(group.innerSubject);
                             break;
                         case ListEventType.Remove:
                             if (!found) throw new Exception("Key not found.");
 
-                            group.innerSubscription.Dispose();
-                            group.innerSubscription = null;
+                            InternalExtensions.DisposeSafely(ref group.innerSubscription);
 
                             if (group.outerSubscription == null && group.innerSubscription == null)
                                 onNext(ListEventType.Remove, group, group.key, null);
@@ -356,10 +259,44 @@ namespace IronStone.Moldinium
             });
         }
 
+        struct DoubleGroupByInfo<TKey, TOuter, TInner>
+        {
+            public Key key;
+            public TKey lkey;
+            public LiveListSubject<TOuter> outerSubject;
+            public LiveListSubject<TInner> innerSubject;
+            public IDisposable outerSubscription;
+            public IDisposable innerSubscription;
+        }
+    }
+
+    public static partial class LiveList
+    {
+        public static IGroupedLiveList<TKey, TSource> GroupBy<TSource, TKey>(this ILiveList<TSource> source, Func<TSource, TKey> keySelector, IEqualityComparer<TKey> comparer = null)
+        {
+            return new GroupedLivedList<TKey, TSource, TSource>(source, keySelector, s => s, comparer);
+        }
+
+        public static IGroupedLiveList<TKey, TElement> GroupBy<TSource, TKey, TElement>(this ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, IEqualityComparer<TKey> comparer = null)
+        {
+            return new GroupedLivedList<TKey, TSource, TElement>(source, keySelector, elementSelector, comparer);
+        }
+
+        public static ILiveList<TResult> GroupBy<TSource, TKey, TResult>(this ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TKey, ILiveList<TSource>, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)
+        {
+            return source.GroupBy(keySelector, comparer).Select(g => resultSelector(g.Key, g));
+        }
+
+        public static ILiveList<TResult> GroupBy<TSource, TKey, TElement, TResult>(this ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, Func<TKey, ILiveList<TElement>, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)
+        {
+            return source.GroupBy(keySelector, elementSelector, comparer).Select(g => resultSelector(g.Key, g));
+        }
+
         public static ILiveList<TResult> GroupJoin<TOuter, TInner, TKey, TResult>(this ILiveList<TOuter> outer, ILiveList<TInner> inner,
             Func<TOuter, TKey> outerKeySelector, Func<TInner, TKey> innerKeySelector, Func<TOuter, ILiveList<TInner>, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)
         {
-            return outer.Groupie(inner, outerKeySelector, innerKeySelector, comparer).Select(t => t.Item2.Select(o => resultSelector(o, t.Item3))).Flatten();
+            // IMPROVEME: The OrderBy could be replaced with something that brings any order.
+            return outer.DoubleGroupBy(inner, outerKeySelector, innerKeySelector, comparer).OrderBy(g => g.key).Select(t => t.outerSubject.Select(o => resultSelector(o, t.innerSubject))).Flatten();
         }
 
         public static ILiveList<TResult> Join<TOuter, TInner, TKey, TResult>(this ILiveList<TOuter> outer, ILiveList<TInner> inner, Func<TOuter, TKey> outerKeySelector, Func<TInner, TKey> innerKeySelector, Func<TOuter, TInner, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)
