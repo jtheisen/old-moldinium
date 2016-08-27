@@ -258,70 +258,101 @@ namespace IronStone.Moldinium
             public TKey lkey;
             public LiveListSubject<TOuter> outerSubject;
             public LiveListSubject<TInner> innerSubject;
-            public Dictionary<KeyPair, Key> forwardKeyMapping;
+            public IDisposable outerSubscription;
+            public IDisposable innerSubscription;
+            //public Dictionary<KeyPair, Key> forwardKeyMapping;
         }
 
         static ILiveList<GroupieInfo<TKey, TOuter, TInner>> Groupie<TOuter, TInner, TKey>(this ILiveList<TOuter> outer, ILiveList<TInner> inner, Func<TOuter, TKey> outerKeySelector, Func<TInner, TKey> innerKeySelector, IEqualityComparer<TKey> comparer = null)
         {
             return LiveList.Create<GroupieInfo<TKey, TOuter, TInner>>((onNext, downwardsRefreshRequest) =>
             {
-                var groups =  new Dictionary<TKey, GroupieInfo<TKey, TOuter, TInner>>();
+                var outerLookup = outer.ToLookup(outerKeySelector, comparer);
+                var innerLookup = inner.ToLookup(innerKeySelector, comparer);
 
-                Func<TKey, ListEventType, GroupieInfo<TKey, TOuter, TInner>> getTuple = (lkey, type) =>
+                var groups = new Dictionary<TKey, GroupieInfo<TKey, TOuter, TInner>>();
+
+                var outerSubscription = outerLookup.Subscribe((type, item, key, previousKey) =>
                 {
-                    GroupieInfo<TKey, TOuter, TInner> tuple;
+                    GroupieInfo<TKey, TOuter, TInner> group;
 
-                    var found = groups.TryGetValue(lkey, out tuple);
+                    var found = groups.TryGetValue(item.Key, out group);
 
                     switch (type)
                     {
                         case ListEventType.Add:
                             if (!found)
                             {
-                                var nkey = KeyHelper.Create();
-                                tuple.key = nkey;
-                                tuple.lkey = lkey;
-                                tuple.outerSubject = new LiveListSubject<TOuter>();
-                                tuple.innerSubject = new LiveListSubject<TInner>();
-                                tuple.forwardKeyMapping = new Dictionary<KeyPair, Key>();
-                                groups[lkey] = tuple;
-                                onNext(ListEventType.Add, tuple, nkey, null);
+                                group.key = KeyHelper.Create();
+                                group.lkey = item.Key;
+                                group.outerSubject = new LiveListSubject<TOuter>();
+                                group.innerSubject = new LiveListSubject<TInner>();
+
+                                onNext(ListEventType.Add, group, group.key, null);
                             }
+
+                            
+                            group.outerSubscription = item.Subscribe((type2, item2, key2, previousKey2) => group.outerSubject.OnNext(type2, item2, key2, previousKey2), null);
                             break;
                         case ListEventType.Remove:
-                            if (!found) throw new Exception("Could not find grouping key.");
-                            if (tuple.innerSubject.Count == 0 && tuple.outerSubject.Count == 0)
-                                onNext(ListEventType.Remove, tuple, tuple.key, null);
-                            break;
-                        default:
+                            if (!found) throw new Exception("Key not found.");
+
+                            group.outerSubscription.Dispose();
+                            group.outerSubscription = null;
+
+                            if (group.outerSubscription == null && group.innerSubscription == null)
+                                onNext(ListEventType.Remove, group, group.key, null);
                             break;
                     }
-
-                    return tuple;
-                };
-
-                var outerSubscription = outer.Subscribe((type, item, key, previousKey) =>
-                {
-                    var lkey = outerKeySelector(item);
-
-                    var group = getTuple(lkey, type);
-
-                    group.outerSubject.OnNext(type, item, key, null);
                 }, null);
 
-                var innerSubscription = inner.Subscribe((type, item, key, previousKey) =>
+                var innerSubscription = innerLookup.Subscribe((type, item, key, previousKey) =>
                 {
-                    var lkey = innerKeySelector(item);
+                    GroupieInfo<TKey, TOuter, TInner> group;
 
-                    var group = getTuple(lkey, type);
+                    var found = groups.TryGetValue(item.Key, out group);
 
-                    group.innerSubject.OnNext(type, item, key, null);
+                    switch (type)
+                    {
+                        case ListEventType.Add:
+                            if (!found)
+                            {
+                                group.key = KeyHelper.Create();
+                                group.lkey = item.Key;
+                                group.outerSubject = new LiveListSubject<TOuter>();
+                                group.innerSubject = new LiveListSubject<TInner>();
+
+                                onNext(ListEventType.Add, group, group.key, null);
+                            }
+
+                            group.innerSubscription = item.Subscribe((type2, item2, key2, previousKey2) => group.innerSubject.OnNext(type2, item2, key2, previousKey2), null);
+                            break;
+                        case ListEventType.Remove:
+                            if (!found) throw new Exception("Key not found.");
+
+                            group.innerSubscription.Dispose();
+                            group.innerSubscription = null;
+
+                            if (group.outerSubscription == null && group.innerSubscription == null)
+                                onNext(ListEventType.Remove, group, group.key, null);
+                            break;
+                    }
                 }, null);
+
+                IDisposable releaseDisposable = Disposable.Create(() =>
+                {
+                    foreach (var group in groups.Values)
+                    {
+                        group.innerSubscription?.Dispose();
+                        group.outerSubscription?.Dispose();
+                    }
+                });
 
                 //FIXME: kill all subjects
                 return new CompositeDisposable(
                     innerSubscription,
-                    outerSubscription);
+                    outerSubscription,
+                    releaseDisposable);
             });
         }
 
