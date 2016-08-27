@@ -97,4 +97,19 @@ namespace IronStone.Moldinium
     }
 
     public delegate void DLiveListObserver<in T>(ListEventType type, T item, Key key, Key? previousKey);
+
+    public interface ILiveListObserver<in T>
+    {
+        void OnNext(ListEventType type, T item, Key key, Key? previousKey);
+
+        IObservable<Key> RefreshRequested { get; }
+    }
+
+    public static class Ext2
+    {
+        public static IDisposable Subscribe<T>(this ILiveList<T> source, ILiveListObserver<T> observer)
+        {
+            return source.Subscribe((type, item, key, previousKey) => observer.OnNext(type, item, key, previousKey), observer.RefreshRequested);
+        }
+    }
 }

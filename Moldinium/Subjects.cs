@@ -5,7 +5,7 @@ using System.Reactive.Subjects;
 
 namespace IronStone.Moldinium
 {
-    public class LiveListSubject<TSource> : ILiveList<TSource>
+    public class LiveListSubject<TSource> : ILiveList<TSource>, ILiveListObserver<TSource>
     {
         public IDisposable Subscribe(DLiveListObserver<TSource> observer, IObservable<Key> refreshRequested)
         {
@@ -14,6 +14,8 @@ namespace IronStone.Moldinium
             var subscription = Disposable.Create(() => observers.Remove(info));
 
             info.Subscription = subscription;
+
+            info.refreshRequestSubscription = refreshRequested.Subscribe(refreshRequested2);
 
             observers.Add(info);
 
@@ -45,6 +47,8 @@ namespace IronStone.Moldinium
             }
         }
 
+        public IObservable<Key> RefreshRequested => refreshRequested2;
+
         public Int32 Count { get; private set; }
 
         Subject<Key> refreshRequested2 = new Subject<Key>();
@@ -54,6 +58,7 @@ namespace IronStone.Moldinium
             public DLiveListObserver<TSource> Observer;
             public IDisposable Subscription;
             public IObservable<Key> RefreshRequested;
+            public IDisposable refreshRequestSubscription;
         }
 
         List<ObserverInfo> observers = new List<ObserverInfo>();
