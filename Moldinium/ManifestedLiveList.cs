@@ -14,15 +14,15 @@ namespace IronStone.Moldinium
             nested.Subscribe(OnNext, null);
         }
 
-        void OnNext(ListEventType type, T item, Key key, Key? previousKey)
+        void OnNext(ListEventType type, T item, Id id, Id? previousId)
         {
-            var index = previousKey.HasValue ? keys.IndexOf(previousKey.Value) : -1;
+            var index = previousId.HasValue ? keys.IndexOf(previousId.Value) : -1;
 
             switch (type)
             {
                 case ListEventType.Add:
                     items.Insert(index + 1, item);
-                    keys.Insert(index + 1, key);
+                    keys.Insert(index + 1, id);
                     break;
                 case ListEventType.Remove:
                     items.RemoveAt(index + 1);
@@ -55,7 +55,7 @@ namespace IronStone.Moldinium
         Boolean ICollection.IsSynchronized { get { return false; } }
 
         List<T> items = new List<T>();
-        List<Key> keys = new List<Key>();
+        List<Id> keys = new List<Id>();
 
         ILiveList<T> nested;
     }

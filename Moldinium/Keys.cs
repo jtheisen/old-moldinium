@@ -3,52 +3,52 @@ using System.Diagnostics;
 
 namespace IronStone.Moldinium
 {
-    [DebuggerDisplay("{Id}")]
-    public struct Key : IEquatable<Key>, IComparable<Key>
+    [DebuggerDisplay("{id}")]
+    public struct Id : IEquatable<Id>, IComparable<Id>
     {
-        internal Guid Id;
+        internal Guid id;
 
-        public static Boolean operator ==(Key lhs, Key rhs)
+        public static Boolean operator ==(Id lhs, Id rhs)
         {
-            return lhs.Id == rhs.Id;
+            return lhs.id == rhs.id;
         }
 
-        public static Boolean operator !=(Key lhs, Key rhs)
+        public static Boolean operator !=(Id lhs, Id rhs)
         {
-            return lhs.Id != rhs.Id;
+            return lhs.id != rhs.id;
         }
 
         public override Boolean Equals(Object obj)
         {
-            return Id.Equals(obj);
+            return id.Equals(obj);
         }
 
         public override Int32 GetHashCode()
         {
-            return Id.GetHashCode();
+            return id.GetHashCode();
         }
 
-        public Boolean Equals(Key other)
+        public Boolean Equals(Id other)
         {
-            return Id.Equals(other.Id);
+            return id.Equals(other.id);
         }
 
-        public Int32 CompareTo(Key other)
+        public Int32 CompareTo(Id other)
         {
-            return Id.CompareTo(other.Id);
+            return id.CompareTo(other.id);
         }
 
         public override string ToString()
         {
-            return Id.ToString().Substring(0, 6);
+            return id.ToString().Substring(0, 6);
         }
     }
 
-    public static class KeyHelper
+    public static class IdHelper
     {
-        public static Key Create()
+        public static Id Create()
         {
-            return new Key() { Id = Guid.NewGuid() };
+            return new Id() { id = Guid.NewGuid() };
         }
     }
 }

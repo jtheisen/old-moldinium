@@ -16,23 +16,23 @@ namespace IronStone.Moldinium
 
     public static class ThingWithKey
     {
-        public static ThingWithKey<TSource> Create<TSource>(TSource thing, Key key)
+        public static ThingWithKey<TSource> Create<TSource>(TSource thing, Id id)
         {
-            return new ThingWithKey<TSource>(thing, key);
+            return new ThingWithKey<TSource>(thing, id);
         }
     }
 
-    [DebuggerDisplay("{Key}: {Thing}")]
+    [DebuggerDisplay("{Id}: {Thing}")]
     public struct ThingWithKey<TSource>
     {
         public readonly TSource Thing;
-        public readonly Key Key;
+        public readonly Id Id;
         public SerialDisposable Subscriptions;
 
-        public ThingWithKey(TSource thing, Key key)
+        public ThingWithKey(TSource thing, Id id)
         {
             this.Thing = thing;
-            this.Key = key;
+            this.Id = id;
             this.Subscriptions = null;
         }
     }
@@ -50,7 +50,7 @@ namespace IronStone.Moldinium
             SetRhs(rhs.Thing);
             var result = Compare();
             if (result != 0) return result;
-            return Comparer<Key>.Default.Compare(lhs.Key, rhs.Key);
+            return Comparer<Id>.Default.Compare(lhs.Id, rhs.Id);
         }
 
         public static readonly TrivialComparerEvaluator<TSource> Trivial = new TrivialComparerEvaluator<TSource>();
@@ -117,7 +117,7 @@ namespace IronStone.Moldinium
     {
         public abstract ILiveIndex<TSource> MakeIndex(AbstractComparerEvaluator<TSource> evaluator = null);
 
-        public IDisposable Subscribe(DLiveListObserver<TSource> observer, IObservable<Key> refreshRequested)
+        public IDisposable Subscribe(DLiveListObserver<TSource> observer, IObservable<Id> refreshRequested)
         {
             var index = MakeIndex();
 
@@ -163,9 +163,9 @@ namespace IronStone.Moldinium
     {
         AbstractComparerEvaluator<TSource> evaluator;
 
-        Subject<Key> refreshRequest = new Subject<Key>();
+        Subject<Id> refreshRequest = new Subject<Id>();
 
-        Action<TSource, Key> handleOnChange;
+        Action<TSource, Id> handleOnChange;
 
         Func<TSource, Unit> evaluationSelector;
 
@@ -176,30 +176,30 @@ namespace IronStone.Moldinium
         internal LiveIndex(ILiveList<TSource> source, AbstractComparerEvaluator<TSource> evaluator)
         {
             this.evaluator = evaluator;
-            handleOnChange = (item, key) => refreshRequest.OnNext(key);
+            handleOnChange = (item, id) => refreshRequest.OnNext(id);
             evaluationSelector = item => { evaluator.SetLhs(item); return Unit.Default; };
             sourceSubscription = source.Subscribe(Handle, refreshRequest);
         }
 
-        public IDisposable Subscribe(DLiveListObserver<TSource> observer, IObservable<Key> refreshRequested)
+        public IDisposable Subscribe(DLiveListObserver<TSource> observer, IObservable<Id> refreshRequested)
         {
             // FIXME: A refresh request will now refresh all subscribers, as they share the live list.
             return list.Select(twk => twk.Thing).Subscribe(observer, refreshRequested);
         }
 
-        void Handle(ListEventType type, TSource item, Key key, Key? previousKey)
+        void Handle(ListEventType type, TSource item, Id id, Id? previousId)
         {
-            var twk = ThingWithKey.Create(item, key);
+            var twk = ThingWithKey.Create(item, id);
 
-            // I used to do binary search on both types, but obviously we can't yet work like this: Any key whiches sort item changed
-            // is in the wrong place. We should search for it using the old key, but so far we don't keep track of that.
+            // I used to do binary search on both types, but obviously we can't yet work like this: Any id whiches sort item changed
+            // is in the wrong place. We should search for it using the old id, but so far we don't keep track of that.
 
             switch (type)
             {
                 case ListEventType.Add:
                     var insertionIndex = list.BinarySearch(twk, evaluator);
                     if (insertionIndex >= 0) throw new Exception("Item was already inserted.");
-                    Repository.Instance.EvaluateAndSubscribe(ref twk.Subscriptions, evaluationSelector, handleOnChange, item, key);
+                    Repository.Instance.EvaluateAndSubscribe(ref twk.Subscriptions, evaluationSelector, handleOnChange, item, id);
                     list.Insert(~insertionIndex, twk);
                     break;
                 case ListEventType.Remove:

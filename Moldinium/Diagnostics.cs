@@ -12,29 +12,29 @@ namespace IronStone.Moldinium
         {
             return LiveList.Create<T>((onNext, downwardsRefreshRequests) =>
             {
-                var keys = new HashSet<Key>();
+                var keys = new HashSet<Id>();
 
-                return source.Subscribe((type, item, key, previousKey) =>
+                return source.Subscribe((type, item, id, previousId) =>
                 {
                     switch (type)
                     {
                         case ListEventType.Add:
-                            if (!keys.Add(key))
-                                throw new Exception("Known key provided at insertion in sanity check.");
-                            if (previousKey.HasValue && !keys.Contains(previousKey.Value))
-                                throw new Exception("Unkown previous key provided at insertion in sanity check.");
+                            if (!keys.Add(id))
+                                throw new Exception("Known id provided at insertion in sanity check.");
+                            if (previousId.HasValue && !keys.Contains(previousId.Value))
+                                throw new Exception("Unkown previous id provided at insertion in sanity check.");
                             break;
                         case ListEventType.Remove:
-                            if (!keys.Remove(key))
-                                throw new Exception("Unknown key provided at removal in sanity check.");
-                            if (previousKey.HasValue && !keys.Contains(previousKey.Value))
-                                throw new Exception("Unkown previous key provided at removal in sanity check.");
+                            if (!keys.Remove(id))
+                                throw new Exception("Unknown id provided at removal in sanity check.");
+                            if (previousId.HasValue && !keys.Contains(previousId.Value))
+                                throw new Exception("Unkown previous id provided at removal in sanity check.");
                             break;
                         default:
                             throw new Exception("Unkown operation type provided in sanity check.");
                     }
 
-                    onNext(type, item, key, previousKey);
+                    onNext(type, item, id, previousId);
 
                 }, downwardsRefreshRequests);
             });

@@ -8,12 +8,12 @@ namespace IronStone.Moldinium
     // Pretty much every ILiveList<T> really is actually this thing here.
     class ConcreteLiveList<T> : ILiveList<T>, IEnumerable<T>, INotifyCollectionChanged
     {
-        public ConcreteLiveList(Func<DLiveListObserver<T>, IObservable<Key>, IDisposable> subscribe)
+        public ConcreteLiveList(Func<DLiveListObserver<T>, IObservable<Id>, IDisposable> subscribe)
         {
             this.subscribe = subscribe;
         }
 
-        public IDisposable Subscribe(DLiveListObserver<T> observer, IObservable<Key> refresh)
+        public IDisposable Subscribe(DLiveListObserver<T> observer, IObservable<Id> refresh)
         {
             return subscribe(observer, refresh);
         }
@@ -24,7 +24,7 @@ namespace IronStone.Moldinium
                 {
                     if (null != selfSubscription) throw new Exception(
                         "Unexpected state in ConcreteLiveList on collection change subscription.");
-                    manifestation = new List<Key>();
+                    manifestation = new List<Id>();
                     selfSubscription = subscribe(ProcessEvent, null);
                 }
 
@@ -49,7 +49,7 @@ namespace IronStone.Moldinium
         {
             var lst = new List<T>();
 
-            using (subscribe((type, item, key, previousKey) => lst.Add(item), null)) { }
+            using (subscribe((type, item, id, previousId) => lst.Add(item), null)) { }
 
             return lst.GetEnumerator();
         }
@@ -64,19 +64,19 @@ namespace IronStone.Moldinium
             return GetEnumerator();
         }
 
-        void ProcessEvent(ListEventType type, T item, Key key, Key? previousKey)
+        void ProcessEvent(ListEventType type, T item, Id id, Id? previousId)
         {
             switch (type)
             {
                 case ListEventType.Add:
-                    var previousKeyIndex = previousKey.HasValue ? manifestation.IndexOf(previousKey.Value) + 1 : 0;
-                    manifestation.Insert(previousKeyIndex, key);
+                    var previousKeyIndex = previousId.HasValue ? manifestation.IndexOf(previousId.Value) + 1 : 0;
+                    manifestation.Insert(previousKeyIndex, id);
                     collectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(
                         NotifyCollectionChangedAction.Add, item, previousKeyIndex));
                     break;
                 case ListEventType.Remove:
-                    var index = manifestation.IndexOf(key);
-                    if (index < 0) throw new Exception("Key not in list.");
+                    var index = manifestation.IndexOf(id);
+                    if (index < 0) throw new Exception("Id not in list.");
                     collectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(
                         NotifyCollectionChangedAction.Remove, item, index));
                     manifestation.RemoveAt(index);
@@ -86,11 +86,11 @@ namespace IronStone.Moldinium
             }
         }
 
-        Func<DLiveListObserver<T>, IObservable<Key>, IDisposable> subscribe;
+        Func<DLiveListObserver<T>, IObservable<Id>, IDisposable> subscribe;
 
         IDisposable selfSubscription = null;
 
-        List<Key> manifestation = null;
+        List<Id> manifestation = null;
 
         NotifyCollectionChangedEventHandler collectionChanged = null;
     }

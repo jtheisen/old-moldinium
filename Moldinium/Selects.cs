@@ -9,7 +9,7 @@ namespace IronStone.Moldinium
     {
         struct SelectAttachment<TResult>
         {
-            public Key Key;
+            public Id Id;
             public TResult Image;
             public SerialDisposable WatchableSubscriptions;
         }
@@ -18,39 +18,39 @@ namespace IronStone.Moldinium
         {
             return LiveList.Create<TResult>((onNext, downwardsRefreshRequests) =>
             {
-                var attachments = new Dictionary<Key, SelectAttachment<TResult>>();
+                var attachments = new Dictionary<Id, SelectAttachment<TResult>>();
 
                 // FIXME: We don't actually need a reverse mapping if we pass the keys as-is. But can we pass the keys that way?
-                var reverseMapping = new Dictionary<Key, Key>();
+                var reverseMapping = new Dictionary<Id, Id>();
 
-                var upwardsRefreshRequests = new Subject<Key>();
+                var upwardsRefreshRequests = new Subject<Id>();
 
-                Action<TSource, Key> redo = (item, key) =>
+                Action<TSource, Id> redo = (item, id) =>
                 {
-                    upwardsRefreshRequests.OnNext(key);
+                    upwardsRefreshRequests.OnNext(id);
                 };
 
-                var subscription = source.Subscribe((type, item, key, previousKey) =>
+                var subscription = source.Subscribe((type, item, id, previousId) =>
                 {
-                    var previousMappedKey = previousKey.HasValue ? attachments[previousKey.Value].Key : (Key?)null;
+                    var previousMappedKey = previousId.HasValue ? attachments[previousId.Value].Id : (Id?)null;
                     switch (type)
                     {
                         case ListEventType.Add:
                             var newAttachment = new SelectAttachment<TResult>();
                             
-                            newAttachment.Key = key;
+                            newAttachment.Id = id;
                             // FIXME: avoid boxing
-                            newAttachment.Image = Repository.Instance.EvaluateAndSubscribe(ref newAttachment.WatchableSubscriptions, selector, redo, item, key);
-                            onNext(ListEventType.Add, newAttachment.Image, key, previousMappedKey);
-                            attachments[key] = newAttachment;
-                            reverseMapping[newAttachment.Key] = key;
+                            newAttachment.Image = Repository.Instance.EvaluateAndSubscribe(ref newAttachment.WatchableSubscriptions, selector, redo, item, id);
+                            onNext(ListEventType.Add, newAttachment.Image, id, previousMappedKey);
+                            attachments[id] = newAttachment;
+                            reverseMapping[newAttachment.Id] = id;
                             break;
                         case ListEventType.Remove:
-                            var attachment = attachments[key];
+                            var attachment = attachments[id];
                             attachment.WatchableSubscriptions?.Dispose();
-                            onNext(ListEventType.Remove, attachment.Image, key, previousMappedKey);
-                            attachments.Remove(key);
-                            reverseMapping.Remove(attachment.Key);
+                            onNext(ListEventType.Remove, attachment.Image, id, previousMappedKey);
+                            attachments.Remove(id);
+                            reverseMapping.Remove(attachment.Id);
                             break;
                         default:
                             break;
@@ -58,7 +58,7 @@ namespace IronStone.Moldinium
                 }, upwardsRefreshRequests);
 
                 return new CompositeDisposable(
-                    downwardsRefreshRequests?.Subscribe(key => upwardsRefreshRequests.OnNext(reverseMapping[key])) ?? Disposable.Empty,
+                    downwardsRefreshRequests?.Subscribe(id => upwardsRefreshRequests.OnNext(reverseMapping[id])) ?? Disposable.Empty,
                     subscription);
             });
         }
@@ -76,16 +76,16 @@ namespace IronStone.Moldinium
 
         struct WhereInfo<TSource>
         {
-            public Key Key { get; set; }
+            public Id Id { get; set; }
             public Boolean IsIn { get; set; }
         }
 
         // Only until the compiler bug is fixed.
-        static Key? GetKey<TSource>(this WhereInfo<TSource>? source)
+        static Id? GetKey<TSource>(this WhereInfo<TSource>? source)
         {
             if (source == null) return null;
 
-            return source.Value.Key;
+            return source.Value.Id;
         }
 
         public static ILiveList<TSource> Where<TSource>(this ILiveList<TSource> source, Func<TSource, Boolean> predicate)
@@ -94,14 +94,14 @@ namespace IronStone.Moldinium
             {
                 var manifestation = new List<WhereInfo<TSource>>();
 
-                var upwardsRefreshRequests = new Subject<Key>();
+                var upwardsRefreshRequests = new Subject<Id>();
 
                 Action<ListEvent<TSource>> redo = v =>
                 {
-                    upwardsRefreshRequests.OnNext(v.Key);
+                    upwardsRefreshRequests.OnNext(v.Id);
                 };
 
-                var subscription = source.Subscribe((type, item, key, previousKey) =>
+                var subscription = source.Subscribe((type, item, id, previousId) =>
                 {
                     switch (type)
                     {
@@ -109,13 +109,13 @@ namespace IronStone.Moldinium
                             {
                                 var indexOfPreviousIn = -1;
                                 var indexOfPrevious = -1;
-                                if (previousKey.HasValue)
+                                if (previousId.HasValue)
                                 {
                                     for (++indexOfPrevious; indexOfPrevious < manifestation.Count; ++indexOfPrevious)
                                     {
                                         var current = manifestation[indexOfPrevious];
                                         if (current.IsIn) indexOfPreviousIn = indexOfPrevious;
-                                        if (current.Key == previousKey) break;
+                                        if (current.Id == previousId) break;
                                     }
 
                                     if (indexOfPrevious == manifestation.Count) throw new Exception("Previous element not found in manifestation.");
@@ -125,12 +125,12 @@ namespace IronStone.Moldinium
 
                                 var isIn = predicate(item);// FIXME Repository.Instance.EvaluateAndSubscribe(v2 => predicate(v2.Item), redo, v);
 
-                                var info = new WhereInfo<TSource>() { Key = key, IsIn = isIn };
+                                var info = new WhereInfo<TSource>() { Id = id, IsIn = isIn };
 
                                 manifestation.Insert(indexOfPrevious + 1, info);
 
                                 if (isIn)
-                                    onNext(ListEventType.Add, item, key, previous.GetKey());
+                                    onNext(ListEventType.Add, item, id, previous.GetKey());
                             }
                             break;
                         case ListEventType.Remove:
@@ -140,7 +140,7 @@ namespace IronStone.Moldinium
                                 for (; indexOfTarget < manifestation.Count; ++indexOfTarget)
                                 {
                                     var current = manifestation[indexOfTarget];
-                                    if (current.Key == key) break;
+                                    if (current.Id == id) break;
                                     if (current.IsIn) indexOfPreviousIn = indexOfTarget;
                                 }
 
@@ -153,7 +153,7 @@ namespace IronStone.Moldinium
                                 manifestation.RemoveAt(indexOfTarget);
 
                                 if (target.IsIn)
-                                    onNext(ListEventType.Remove, item, key, previousIn.GetKey());
+                                    onNext(ListEventType.Remove, item, id, previousIn.GetKey());
                             }
                             break;
                         default:
@@ -162,7 +162,7 @@ namespace IronStone.Moldinium
                 }, upwardsRefreshRequests);
 
                 return new CompositeDisposable(
-                    downwardsRefreshRequests?.Subscribe(key => upwardsRefreshRequests.OnNext(key)) ?? Disposable.Empty,
+                    downwardsRefreshRequests?.Subscribe(id => upwardsRefreshRequests.OnNext(id)) ?? Disposable.Empty,
                     subscription);
             });
         }

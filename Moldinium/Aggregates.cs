@@ -62,7 +62,7 @@ namespace IronStone.Moldinium
                         forward = go.Forward,
                         backward = go.Backward;
 
-                    return s.Subscribe((type, item, key, previousKey) =>
+                    return s.Subscribe((type, item, id, previousId) =>
                     {
                         switch (type)
                         {

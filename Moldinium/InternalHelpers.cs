@@ -6,9 +6,9 @@ namespace IronStone.Moldinium
 {
     internal static class InternalExtensions
     {
-        public static Key? ApplyTo(this Key? source, IDictionary<Key, Key> dictionary)
+        public static Id? ApplyTo(this Id? source, IDictionary<Id, Id> dictionary)
         {
-            return source.HasValue ? dictionary[source.Value] : (Key?)null;
+            return source.HasValue ? dictionary[source.Value] : (Id?)null;
         }
 
         public static void DisposeSafely(ref IDisposable disposable)

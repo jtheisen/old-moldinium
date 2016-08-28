@@ -8,7 +8,7 @@ namespace IronStone.Moldinium
     // FIXME: Why isn't this manifested? A late subscription doesn't get the list!
     public class LiveListSubject<TSource> : ILiveList<TSource>, ILiveListObserver<TSource>
     {
-        public IDisposable Subscribe(DLiveListObserver<TSource> observer, IObservable<Key> refreshRequested)
+        public IDisposable Subscribe(DLiveListObserver<TSource> observer, IObservable<Id> refreshRequested)
         {
             var info = new ObserverInfo() { observer = observer, refreshRequested = refreshRequested };
 
@@ -21,13 +21,13 @@ namespace IronStone.Moldinium
             return info.subscription;
         }
 
-        public void OnNext(ListEventType type, TSource item, Key key, Key? previousKey)
+        public void OnNext(ListEventType type, TSource item, Id id, Id? previousId)
         {
             foreach (var info in observers)
             {
                 try
                 {
-                    info.observer(type, item, key, previousKey);
+                    info.observer(type, item, id, previousId);
                 }
                 catch (Exception)
                 {
@@ -46,17 +46,17 @@ namespace IronStone.Moldinium
             }
         }
 
-        public IObservable<Key> RefreshRequested => inboundRefreshRequested;
+        public IObservable<Id> RefreshRequested => inboundRefreshRequested;
 
         public Int32 Count { get; private set; }
 
-        Subject<Key> inboundRefreshRequested = new Subject<Key>();
+        Subject<Id> inboundRefreshRequested = new Subject<Id>();
 
         class ObserverInfo
         {
             public DLiveListObserver<TSource> observer;
             public IDisposable subscription;
-            public IObservable<Key> refreshRequested;
+            public IObservable<Id> refreshRequested;
             public IDisposable refreshRequestSubscription;
         }
 

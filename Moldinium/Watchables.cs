@@ -246,14 +246,14 @@ namespace IronStone.Moldinium
             return result;
         }
 
-        public TResult EvaluateAndSubscribe<TSource, TKey, TResult>(ref SerialDisposable subscriptions, Func<TSource, TResult> selector, Action<TSource, TKey> onChange, TSource source, TKey key)
+        public TResult EvaluateAndSubscribe<TSource, TKey, TResult>(ref SerialDisposable subscriptions, Func<TSource, TResult> selector, Action<TSource, TKey> onChange, TSource source, TKey id)
         {
             // FIXME 1: The reference to selector and onChange must be weak!
             // FIXME 2: Don't create lambdas on each call, in particular don't allocate anything if there are no subscriptions
 
             if (onChange == null) throw new ArgumentException("onChange");
 
-            return EvaluateAndSubscribe(ref subscriptions, () => selector(source), () => onChange(source, key));
+            return EvaluateAndSubscribe(ref subscriptions, () => selector(source), () => onChange(source, id));
         }
 
         //public IWatchable<T> GetUnrootedWatchable<T>(Object index)

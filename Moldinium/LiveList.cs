@@ -32,7 +32,7 @@ namespace IronStone.Moldinium
         public LiveList()
         {
             items = new List<T>();
-            keys = new List<Key>();
+            ids = new List<Id>();
         }
 
         /// <summary>
@@ -43,7 +43,7 @@ namespace IronStone.Moldinium
         public LiveList(Int32 capacity)
         {
             items = new List<T>(capacity);
-            keys = new List<Key>(capacity);
+            ids = new List<Id>(capacity);
         }
 
         /// <summary>
@@ -55,7 +55,7 @@ namespace IronStone.Moldinium
         public LiveList(IEnumerable<T> collection)
         {
             items = new List<T>(collection.Count());
-            keys = new List<Key>(collection.Count());
+            ids = new List<Id>(collection.Count());
             InsertRange(0, collection);
         }
 
@@ -63,7 +63,7 @@ namespace IronStone.Moldinium
         /// Gets or sets the total number of elements the internal data structure can hold
         /// without resizing.
         /// </summary>
-        public int Capacity { get { return items.Capacity; } set { items.Capacity = value; keys.Capacity = value; } }
+        public int Capacity { get { return items.Capacity; } set { items.Capacity = value; ids.Capacity = value; } }
 
         /// <summary>
         /// Gets the number of elements contained in the <see cref="System.Collections.Generic.ICollection{T}" />.
@@ -315,10 +315,10 @@ namespace IronStone.Moldinium
         public void RemoveAt(int index)
         {
             var removed = items[index];
-            var key = keys[index];
+            var id = ids[index];
             items.RemoveAt(index);
-            keys.RemoveAt(index);
-            events.OnNext(ListEvent.Make(ListEventType.Remove, removed, key, GetPreviousKey(index)));
+            ids.RemoveAt(index);
+            events.OnNext(ListEvent.Make(ListEventType.Remove, removed, id, GetPreviousId(index)));
             CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, removed, index));
         }
 
@@ -355,10 +355,10 @@ namespace IronStone.Moldinium
         public void Insert(int index, T item)
         {
             AssertItemNotNull(item);
-            var key = KeyHelper.Create();
+            var id = IdHelper.Create();
             items.Insert(index, item);
-            keys.Insert(index, key);
-            events.OnNext(ListEvent.Make(ListEventType.Add, item, key, GetPreviousKey(index)));
+            ids.Insert(index, id);
+            events.OnNext(ListEvent.Make(ListEventType.Add, item, id, GetPreviousId(index)));
             CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
         }
 
@@ -384,9 +384,9 @@ namespace IronStone.Moldinium
         /// </summary>
         public event NotifyCollectionChangedEventHandler CollectionChanged;
 
-        Key? GetPreviousKey(Int32 index)
+        Id? GetPreviousId(Int32 index)
         {
-            return index > 0 ? keys[index - 1] : (Key?)null;
+            return index > 0 ? ids[index - 1] : (Id?)null;
         }
 
         void AssertItemNotNull(T item, String paramName = "item")
@@ -396,26 +396,26 @@ namespace IronStone.Moldinium
 
         protected virtual void OnEvaluated() { }
 
-        public IDisposable Subscribe(DLiveListObserver<T> onNext, IObservable<Key> refreshRequested = null)
+        public IDisposable Subscribe(DLiveListObserver<T> onNext, IObservable<Id> refreshRequested = null)
         {
             for (var i = 0; i < items.Count; ++i)
-                onNext(ListEventType.Add, items[i], keys[i], i > 0 ? keys[i - 1] : (Key?)null);
+                onNext(ListEventType.Add, items[i], ids[i], i > 0 ? ids[i - 1] : (Id?)null);
 
             return new CompositeDisposable(
-                refreshRequested?.Subscribe(key =>
+                refreshRequested?.Subscribe(id =>
                 {
-                    var index = keys.IndexOf(key);
+                    var index = ids.IndexOf(id);
 
                     if (index < 0) throw new Exception("Item not found.");
 
                     var item = items[index];
 
-                    var previousKey = index == 0 ? (Key?)null : keys[index - 1];
+                    var previousId = index == 0 ? (Id?)null : ids[index - 1];
 
-                    onNext(ListEventType.Remove, item, key, previousKey);
-                    onNext(ListEventType.Add, item, key, previousKey);
+                    onNext(ListEventType.Remove, item, id, previousId);
+                    onNext(ListEventType.Add, item, id, previousId);
                 }) ?? Disposable.Empty,
-                events.Subscribe(v => onNext(v.Type, v.Item, v.Key, v.PreviousKey))
+                events.Subscribe(v => onNext(v.Type, v.Item, v.Id, v.PreviousId))
             );
         }
 
@@ -441,7 +441,7 @@ namespace IronStone.Moldinium
         ISubject<ListEvent<T>> events = new Subject<ListEvent<T>>();
 
         List<T> items;
-        List<Key> keys;
+        List<Id> ids;
 
         // Missing List<T> methods:
 

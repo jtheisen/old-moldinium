@@ -29,14 +29,14 @@ namespace IronStone.Moldinium
         /// <typeparam name="T"></typeparam>
         /// <param name="type">Whether to add or remove the item.</param>
         /// <param name="item">The item to add or remove.</param>
-        /// <param name="key">The key for the item.</param>
-        /// <param name="previousKey">The key of the previous item.</param>
+        /// <param name="id">The id for the item.</param>
+        /// <param name="previousId">The id of the previous item.</param>
         /// <returns>
         /// The list event.
         /// </returns>
-        public static ListEvent<T> Make<T>(ListEventType type, T item, Key key, Key? previousKey)
+        public static ListEvent<T> Make<T>(ListEventType type, T item, Id id, Id? previousId)
         {
-            return new ListEvent<T>(type, item, key, previousKey);
+            return new ListEvent<T>(type, item, id, previousId);
         }
     }
 
@@ -56,13 +56,13 @@ namespace IronStone.Moldinium
         /// </summary>
         public T Item { get; private set; }
         /// <summary>
-        /// Gets the key of the item.
+        /// Gets the id of the item.
         /// </summary>
-        public Key Key { get; private set; }
+        public Id Id { get; private set; }
         /// <summary>
-        /// Gets the key of the previous item.
+        /// Gets the id of the previous item.
         /// </summary>
-        public Key? PreviousKey { get; private set; }
+        public Id? PreviousId { get; private set; }
 
         //public static readonly Func<ListEvent<T>, T> PreviousProjection = v => v.Previous;
 
@@ -74,12 +74,12 @@ namespace IronStone.Moldinium
         /// <param name="type">Whether to add or remove the item.</param>
         /// <param name="target">The item to add or remove.</param>
         /// <param name="previous">The previous item.</param>
-        public ListEvent(ListEventType type, T target, Key key, Key? previousKey)
+        public ListEvent(ListEventType type, T target, Id id, Id? previousId)
         {
             Type = type;
             Item = target;
-            Key = key;
-            PreviousKey = previousKey;
+            Id = id;
+            PreviousId = previousId;
         }
     }
 
@@ -93,15 +93,15 @@ namespace IronStone.Moldinium
     /// <typeparam name="T">The item type of the list.</typeparam>
     public interface ILiveList<out T>
     {
-        IDisposable Subscribe(DLiveListObserver<T> observer, IObservable<Key> refreshRequested);
+        IDisposable Subscribe(DLiveListObserver<T> observer, IObservable<Id> refreshRequested);
     }
 
-    public delegate void DLiveListObserver<in T>(ListEventType type, T item, Key key, Key? previousKey);
+    public delegate void DLiveListObserver<in T>(ListEventType type, T item, Id id, Id? previousId);
 
     public interface ILiveListObserver<in T>
     {
-        void OnNext(ListEventType type, T item, Key key, Key? previousKey);
+        void OnNext(ListEventType type, T item, Id id, Id? previousId);
 
-        IObservable<Key> RefreshRequested { get; }
+        IObservable<Id> RefreshRequested { get; }
     }
 }
