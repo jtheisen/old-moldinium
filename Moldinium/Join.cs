@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reactive.Disposables;
+using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Text;
 using System.Threading.Tasks;
@@ -36,6 +37,14 @@ namespace IronStone.Moldinium
         public TKey Key { get { return key; } }
     }
 
+    // FIXME:
+    /*
+     * We should have two lookups in the long run:
+     * - one for smaller lists that preserves order and
+     * - one for larger lists based on OrderedLiveLists that takes the order from that order
+     * 
+     * Also note that the problem of a lookup preserving order is the same problem as a where preserving order.
+     */
     public class LiveLookup<TKey, TSource, TElement> : ILiveLookup<TKey, TElement>
     {
         Func<TSource, TKey> keySelector;
@@ -43,7 +52,7 @@ namespace IronStone.Moldinium
         Dictionary<TKey, LiveListGrouping<TKey, TElement>> groupingsByGroupingKey;
         Dictionary<Key, TKey> groupingKeysByKey;
 
-        Subject<Key> refreshRequested;
+        IObservable<Key> refreshRequested;
 
         LiveList<ILiveListGrouping<TKey, TElement>> groupings;
 
@@ -85,10 +94,7 @@ namespace IronStone.Moldinium
                     if (!groupingsByGroupingKey.TryGetValue(groupingKey, out grouping))
                     {
                         var newKey = KeyHelper.Create();
-                        var liveList = LiveList.Create<TElement>((onNext, downwardsRefreshRequests) => {
-                            return null;
-                        });
-                        groupingsByGroupingKey[groupingKey] = new LiveListGrouping<TKey, TElement>(groupingKey);
+                        groupingsByGroupingKey[groupingKey] = grouping = new LiveListGrouping<TKey, TElement>(groupingKey);
                         groupingKeysByKey[newKey] = groupingKey;
                         groupings.Add(grouping);
                     }
@@ -100,6 +106,7 @@ namespace IronStone.Moldinium
 
                     manifestation[key] = attachment;
 
+                    // FIXME: previousKey is bs
                     grouping.OnNext(type, element, key, previousKey);
 
                     break;
@@ -118,6 +125,7 @@ namespace IronStone.Moldinium
                     {
                         groupingsByGroupingKey.Remove(groupingKey);
                         groupingKeysByKey.Remove(key);
+                        // FIXME: Isn't this linear time?
                         groupings.Remove(grouping);
                     }
 
@@ -136,7 +144,7 @@ namespace IronStone.Moldinium
             subscription.Dispose();
         }
 
-        public ILiveList<TElement> this[TKey key] { get { return groupingsByGroupingKey[key].Value; } }
+        public ILiveList<TElement> this[TKey key] { get { return groupingsByGroupingKey[key]; } }
     }
 
     class GroupedLivedList<TKey, TSource, TElement> : IGroupedLiveList<TKey, TElement>
@@ -295,8 +303,7 @@ namespace IronStone.Moldinium
         public static ILiveList<TResult> GroupJoin<TOuter, TInner, TKey, TResult>(this ILiveList<TOuter> outer, ILiveList<TInner> inner,
             Func<TOuter, TKey> outerKeySelector, Func<TInner, TKey> innerKeySelector, Func<TOuter, ILiveList<TInner>, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)
         {
-            // IMPROVEME: The OrderBy could be replaced with something that brings any order.
-            return outer.DoubleGroupBy(inner, outerKeySelector, innerKeySelector, comparer).OrderBy(g => g.key).Select(t => t.outerSubject.Select(o => resultSelector(o, t.innerSubject))).Flatten();
+            return outer.DoubleGroupBy(inner, outerKeySelector, innerKeySelector, comparer).OrderByAny().Select(t => t.outerSubject.Select(o => resultSelector(o, t.innerSubject))).Flatten();
         }
 
         public static ILiveList<TResult> Join<TOuter, TInner, TKey, TResult>(this ILiveList<TOuter> outer, ILiveList<TInner> inner, Func<TOuter, TKey> outerKeySelector, Func<TInner, TKey> innerKeySelector, Func<TOuter, TInner, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)

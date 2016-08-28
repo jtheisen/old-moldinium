@@ -5,19 +5,20 @@ using System.Reactive.Subjects;
 
 namespace IronStone.Moldinium
 {
+    // FIXME: Why isn't this manifested? A late subscription doesn't get the list!
     public class LiveListSubject<TSource> : ILiveList<TSource>, ILiveListObserver<TSource>
     {
         public IDisposable Subscribe(DLiveListObserver<TSource> observer, IObservable<Key> refreshRequested)
         {
-            var info = new ObserverInfo() { Observer = observer, RefreshRequested = refreshRequested };
+            var info = new ObserverInfo() { observer = observer, refreshRequested = refreshRequested };
 
-            info.Subscription = Disposable.Create(() => observers.Remove(info));
+            info.subscription = Disposable.Create(() => observers.Remove(info));
 
             info.refreshRequestSubscription = refreshRequested.Subscribe(inboundRefreshRequested);
 
             observers.Add(info);
 
-            return info.Subscription;
+            return info.subscription;
         }
 
         public void OnNext(ListEventType type, TSource item, Key key, Key? previousKey)
@@ -26,7 +27,7 @@ namespace IronStone.Moldinium
             {
                 try
                 {
-                    info.Observer(type, item, key, previousKey);
+                    info.observer(type, item, key, previousKey);
                 }
                 catch (Exception)
                 {
@@ -53,9 +54,9 @@ namespace IronStone.Moldinium
 
         class ObserverInfo
         {
-            public DLiveListObserver<TSource> Observer;
-            public IDisposable Subscription;
-            public IObservable<Key> RefreshRequested;
+            public DLiveListObserver<TSource> observer;
+            public IDisposable subscription;
+            public IObservable<Key> refreshRequested;
             public IDisposable refreshRequestSubscription;
         }
 
