@@ -37,6 +37,46 @@ namespace IronStone.Moldinium
         public TKey Key { get { return key; } }
     }
 
+    struct LiveLookupInfo<TKey, TSource, TElement>
+    {
+        public TKey lkey;
+        public Key previousKey;
+        public Key previousKeyInSameGroup;
+        public TElement element;
+    }
+
+    public class LiveLookup<TKey, TSource, TElement> : ILiveLookup<TKey, TElement>
+    {
+        Func<TSource, TKey> keySelector;
+        Func<TSource, TElement> elementSelector;
+        Dictionary<TKey, LiveListGrouping<TKey, TElement>> groupingsByGroupingKey;
+
+        Dictionary<Key, LiveLookupInfo<TKey, TSource, TElement>> infos;
+
+        public LiveLookup(ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, IEqualityComparer<TKey> comparer)
+        {
+            this.keySelector = keySelector;
+            this.elementSelector = elementSelector;
+        }
+
+        void Handle(ListEventType type, TSource item, Key key, Key? previousKey)
+        {
+            LiveLookupInfo<TKey, TSource, TElement> info;
+
+            var found = infos.TryGetValue(key, out info);
+
+            switch (type)
+            {
+                case ListEventType.Add:
+                    var lkey = keySelector(item);
+                    info.element = elementSelector(item);
+                    break;
+                case ListEventType.Remove:
+                    break;
+            }
+        }
+    }
+
     // FIXME:
     /*
      * We should have two lookups in the long run:
@@ -45,7 +85,7 @@ namespace IronStone.Moldinium
      * 
      * Also note that the problem of a lookup preserving order is the same problem as a where preserving order.
      */
-    public class LiveLookup<TKey, TSource, TElement> : ILiveLookup<TKey, TElement>
+    public class LiveLookup2<TKey, TSource, TElement> : ILiveLookup<TKey, TElement>
     {
         Func<TSource, TKey> keySelector;
         Func<TSource, TElement> elementSelector;
