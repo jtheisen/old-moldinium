@@ -8,9 +8,9 @@ namespace IronStone.Moldinium
 {
     public static partial class LiveList
     {
-        public static ILiveList<T> CheckSanity<T>(this ILiveList<T> source)
+        public static ILiveList<TSource> CheckSanity<TSource>(this ILiveList<TSource> source)
         {
-            return LiveList.Create<T>((onNext, downwardsRefreshRequests) =>
+            return LiveList.Create<TSource>(onNext =>
             {
                 var keys = new HashSet<Id>();
 
@@ -35,8 +35,7 @@ namespace IronStone.Moldinium
                     }
 
                     onNext(type, item, id, previousId);
-
-                }, downwardsRefreshRequests);
+                });
             });
         }
     }

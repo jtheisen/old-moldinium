@@ -8,13 +8,14 @@ namespace IronStone.Moldinium
     // FIXME: Why isn't this manifested? A late subscription doesn't get the list!
     public class LiveListSubject<TSource> : ILiveList<TSource>, ILiveListObserver<TSource>
     {
-        public IDisposable Subscribe(DLiveListObserver<TSource> observer, IObservable<Id> refreshRequested)
+        public ILiveListSubscription Subscribe(DLiveListObserver<TSource> observer)
         {
-            var info = new ObserverInfo() { observer = observer, refreshRequested = refreshRequested };
+            var info = new ObserverInfo() { observer = observer };
 
-            info.subscription = Disposable.Create(() => observers.Remove(info));
-
-            info.refreshRequestSubscription = refreshRequested.Subscribe(inboundRefreshRequested);
+            info.subscription = LiveListSubscription.Create(
+                id => { }, // FIXME: now that can't really work, can it?
+                Disposable.Create(() => observers.Remove(info))
+                );
 
             observers.Add(info);
 
@@ -46,18 +47,12 @@ namespace IronStone.Moldinium
             }
         }
 
-        public IObservable<Id> RefreshRequested => inboundRefreshRequested;
-
         public Int32 Count { get; private set; }
-
-        Subject<Id> inboundRefreshRequested = new Subject<Id>();
 
         class ObserverInfo
         {
             public DLiveListObserver<TSource> observer;
-            public IDisposable subscription;
-            public IObservable<Id> refreshRequested;
-            public IDisposable refreshRequestSubscription;
+            public ILiveListSubscription subscription;
         }
 
         List<ObserverInfo> observers = new List<ObserverInfo>();

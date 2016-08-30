@@ -116,7 +116,7 @@ namespace IronStone.Moldinium
 
             manifestation = new Dictionary<Id, Attachment>();
 
-            subscription = source.Subscribe(Handle, refreshRequested);
+            subscription = source.Subscribe(Handle);
         }
 
         void Handle(ListEventType type, TSource item, Id id, Id? previousId)
@@ -174,9 +174,9 @@ namespace IronStone.Moldinium
             }
         }
 
-        public IDisposable Subscribe(DLiveListObserver<ILiveListGrouping<TKey, TElement>> observer, IObservable<Id> refreshRequested)
+        public ILiveListSubscription Subscribe(DLiveListObserver<ILiveListGrouping<TKey, TElement>> observer)
         {
-            return groupings.Subscribe(observer, refreshRequested);
+            return groupings.Subscribe(observer);
         }
 
         public void Dispose()
@@ -207,11 +207,11 @@ namespace IronStone.Moldinium
             this.comparer = comparer ?? EqualityComparer<TKey>.Default;
         }
 
-        public IDisposable Subscribe(DLiveListObserver<ILiveListGrouping<TKey, TElement>> observer, IObservable<Id> refreshRequested)
+        public ILiveListSubscription Subscribe(DLiveListObserver<ILiveListGrouping<TKey, TElement>> observer)
         {
             var lookup = MakeLookup();
 
-            return lookup.Subscribe(observer, refreshRequested);
+            return lookup.Subscribe(observer);
         }
     }
 
@@ -219,12 +219,17 @@ namespace IronStone.Moldinium
     {
         static ILiveList<DoubleGroupByInfo<TKey, TOuter, TInner>> DoubleGroupBy<TOuter, TInner, TKey>(this ILiveList<TOuter> outer, ILiveList<TInner> inner, Func<TOuter, TKey> outerKeySelector, Func<TInner, TKey> innerKeySelector, IEqualityComparer<TKey> comparer = null)
         {
-            return LiveList.Create<DoubleGroupByInfo<TKey, TOuter, TInner>>((onNext, downwardsRefreshRequest) =>
+            return LiveList.Create<DoubleGroupByInfo<TKey, TOuter, TInner>>(onNext =>
             {
                 var outerLookup = outer.ToLookup(outerKeySelector, comparer);
                 var innerLookup = inner.ToLookup(innerKeySelector, comparer);
 
                 var groups = new Dictionary<TKey, DoubleGroupByInfo<TKey, TOuter, TInner>>();
+
+                Action<Id> handleRefreshRequest = Id =>
+                {
+                    // FIXME
+                };
 
                 var outerSubscription = outerLookup.Subscribe((type, item, id, previousId) =>
                 {
@@ -256,7 +261,7 @@ namespace IronStone.Moldinium
                                 onNext(ListEventType.Remove, group, group.id, null);
                             break;
                     }
-                }, null);
+                });
 
                 var innerSubscription = innerLookup.Subscribe((type, item, id, previousId) =>
                 {
@@ -288,7 +293,7 @@ namespace IronStone.Moldinium
                                 onNext(ListEventType.Remove, group, group.id, null);
                             break;
                     }
-                }, null);
+                });
 
                 IDisposable releaseDisposable = Disposable.Create(() =>
                 {
@@ -300,7 +305,8 @@ namespace IronStone.Moldinium
                 });
 
                 //FIXME: kill all subjects
-                return new CompositeDisposable(
+                return new ActionLiveListSubscription(
+                    handleRefreshRequest,
                     innerSubscription,
                     outerSubscription,
                     releaseDisposable);

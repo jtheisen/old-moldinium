@@ -8,23 +8,23 @@ namespace IronStone.Moldinium
     /// </summary>
     public static partial class LiveList
     {
-        public static IDisposable Subscribe<T>(this ILiveList<T> source, ILiveListObserver<T> observer)
+        public static ILiveListSubscription Subscribe<T>(this ILiveList<T> source, ILiveListObserver<T> observer)
         {
-            return source.Subscribe((type, item, id, previousId) => observer.OnNext(type, item, id, previousId), observer.RefreshRequested);
+            return source.Subscribe((type, item, id, previousId) => observer.OnNext(type, item, id, previousId));
         }
 
         public static IEnumerable<TSource> ToEnumerable<TSource>(this ILiveList<TSource> source)
         {
             var lst = new List<TSource>();
 
-            using (source.Subscribe((type, item, id, previousId) => lst.Add(item), null)) { }
+            using (source.Subscribe((type, item, id, previousId) => lst.Add(item))) { }
 
             return lst;
         }
 
         public static ILiveList<TSource> Wrap<TSource>(this ILiveList<TSource> source)
         {
-            return LiveList.Create<TSource>((onNext, refreshRequest) => source.Subscribe(onNext, refreshRequest));
+            return LiveList.Create<TSource>(source.Subscribe);
         }
 
         public static ILiveList<TSource> AsLiveList<TSource>(this ILiveList<TSource> source)
@@ -39,7 +39,7 @@ namespace IronStone.Moldinium
 
         public static ILiveList<TSource> OrderByAny<TSource>(this ILiveList<TSource> source)
         {
-            return LiveList.Create<TSource>((onNext, refreshRequest) =>
+            return LiveList.Create<TSource>(onNext =>
             {
                 var keyToInfo = new Dictionary<Id, OrderByAnyInfo>();
 
@@ -94,7 +94,7 @@ namespace IronStone.Moldinium
                             }
                             break;
                     }
-                }, refreshRequest);
+                });
 
                 return subscription;
             });

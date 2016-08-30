@@ -44,7 +44,7 @@ namespace IronStone.Moldinium
             return lst;
         }
 
-        public static ILiveList<T> Create<T>(Func<DLiveListObserver<T>, IDisposable> subscribe)
+        public static ILiveList<T> Create<T>(Func<DLiveListObserver<T>, ILiveListSubscription> subscribe)
         {
             return new ConcreteLiveList<T>(subscribe);
         }

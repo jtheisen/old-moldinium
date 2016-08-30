@@ -16,19 +16,14 @@ namespace IronStone.Moldinium
 
         public static ILiveList<TResult> Select<TSource, TResult>(this ILiveList<TSource> source, Func<TSource, TResult> selector)
         {
-            return LiveList.Create<TResult>((onNext, downwardsRefreshRequests) =>
+            return LiveList.Create<TResult>(onNext =>
             {
                 var attachments = new Dictionary<Id, SelectAttachment<TResult>>();
 
                 // FIXME: We don't actually need a reverse mapping if we pass the keys as-is. But can we pass the keys that way?
                 var reverseMapping = new Dictionary<Id, Id>();
 
-                var upwardsRefreshRequests = new Subject<Id>();
-
-                Action<TSource, Id> redo = (item, id) =>
-                {
-                    upwardsRefreshRequests.OnNext(id);
-                };
+                Action<TSource, Id> redo = null;
 
                 var subscription = source.Subscribe((type, item, id, previousId) =>
                 {
@@ -55,12 +50,14 @@ namespace IronStone.Moldinium
                         default:
                             break;
                     }
-                }, upwardsRefreshRequests);
+                });
+
+                redo = (item, id) => subscription.Refresh(id);
 
                 Action<Id> thisIsPutIntoTheReturnedSubscription = id => subscription.Refresh(reverseMapping[id]);
 
-                return new CompositeDisposable(
-                    downwardsRefreshRequests?.Subscribe(id => upwardsRefreshRequests.OnNext(reverseMapping[id])) ?? Disposable.Empty,
+                return LiveListSubscription.Create(
+                    id => subscription.Refresh(reverseMapping[id]),
                     subscription);
             });
         }
@@ -92,16 +89,11 @@ namespace IronStone.Moldinium
 
         public static ILiveList<TSource> Where<TSource>(this ILiveList<TSource> source, Func<TSource, Boolean> predicate)
         {
-            return LiveList.Create<TSource>((onNext, downwardsRefreshRequests) =>
+            return LiveList.Create<TSource>(onNext =>
             {
                 var manifestation = new List<WhereInfo<TSource>>();
 
                 var upwardsRefreshRequests = new Subject<Id>();
-
-                Action<ListEvent<TSource>> redo = v =>
-                {
-                    upwardsRefreshRequests.OnNext(v.Id);
-                };
 
                 var subscription = source.Subscribe((type, item, id, previousId) =>
                 {
@@ -161,11 +153,9 @@ namespace IronStone.Moldinium
                         default:
                             break;
                     }
-                }, upwardsRefreshRequests);
+                });
 
-                return new CompositeDisposable(
-                    downwardsRefreshRequests?.Subscribe(id => upwardsRefreshRequests.OnNext(id)) ?? Disposable.Empty,
-                    subscription);
+                return subscription;
             });
         }
 

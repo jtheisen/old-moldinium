@@ -113,21 +113,21 @@ namespace IronStone.Moldinium
         ILiveIndex<TSource> MakeIndex(AbstractComparerEvaluator<TSource> evaluator);
     }
 
-    public abstract class AbstractOrderedLiveList<TSource> : IOrderedLiveList<TSource>
+    internal abstract class AbstractOrderedLiveList<TSource> : IOrderedLiveList<TSource>
     {
         public abstract ILiveIndex<TSource> MakeIndex(AbstractComparerEvaluator<TSource> evaluator = null);
 
-        public IDisposable Subscribe(DLiveListObserver<TSource> observer, IObservable<Id> refreshRequested)
+        public ILiveListSubscription Subscribe(DLiveListObserver<TSource> observer)
         {
             var index = MakeIndex();
 
-            return new CompositeDisposable(
-                index.Subscribe(observer, refreshRequested),
+            return LiveListSubscription.Create(
+                index.Subscribe(observer),
                 index);
         }
     }
 
-    public class TrivialOrderedLiveList<TSource> : AbstractOrderedLiveList<TSource>
+    internal class TrivialOrderedLiveList<TSource> : AbstractOrderedLiveList<TSource>
     {
         ILiveList<TSource> source;
 
@@ -142,7 +142,7 @@ namespace IronStone.Moldinium
         }
     }
 
-    public class NestedOrderedLiveList<TSource> : AbstractOrderedLiveList<TSource>
+    internal class NestedOrderedLiveList<TSource> : AbstractOrderedLiveList<TSource>
     {
         IOrderedLiveList<TSource> nested;
         Func<AbstractComparerEvaluator<TSource>, AbstractComparerEvaluator<TSource>> nest;
@@ -159,32 +159,30 @@ namespace IronStone.Moldinium
         }
     }
 
-    public class LiveIndex<TSource> : ILiveIndex<TSource>
+    internal class LiveIndex<TSource> : ILiveIndex<TSource>
     {
         AbstractComparerEvaluator<TSource> evaluator;
-
-        Subject<Id> refreshRequest = new Subject<Id>();
 
         Action<TSource, Id> handleOnChange;
 
         Func<TSource, Unit> evaluationSelector;
 
-        IDisposable sourceSubscription;
+        ILiveListSubscription sourceSubscription;
 
         LiveList<ThingWithKey<TSource>> list = new LiveList<ThingWithKey<TSource>>();
 
         internal LiveIndex(ILiveList<TSource> source, AbstractComparerEvaluator<TSource> evaluator)
         {
             this.evaluator = evaluator;
-            handleOnChange = (item, id) => refreshRequest.OnNext(id);
+            handleOnChange = (item, id) => sourceSubscription.Refresh(id);
             evaluationSelector = item => { evaluator.SetLhs(item); return Unit.Default; };
-            sourceSubscription = source.Subscribe(Handle, refreshRequest);
+            sourceSubscription = source.Subscribe(Handle);
         }
 
-        public IDisposable Subscribe(DLiveListObserver<TSource> observer, IObservable<Id> refreshRequested)
+        public ILiveListSubscription Subscribe(DLiveListObserver<TSource> observer)
         {
             // FIXME: A refresh request will now refresh all subscribers, as they share the live list.
-            return list.Select(twk => twk.Thing).Subscribe(observer, refreshRequested);
+            return list.Select(twk => twk.Thing).Subscribe(observer);
         }
 
         void Handle(ListEventType type, TSource item, Id id, Id? previousId)
@@ -212,7 +210,7 @@ namespace IronStone.Moldinium
 
         public void Dispose()
         {
-            sourceSubscription.Dispose();
+            InternalExtensions.DisposeSafely(ref sourceSubscription);
             for (int i = list.Count - 1; i >= 0; --i)
                 Remove(i);
         }
@@ -221,7 +219,7 @@ namespace IronStone.Moldinium
         {
             var removed = list[i];
             list.RemoveAt(i);
-            removed.Subscriptions.Dispose();
+            InternalExtensions.DisposeSafely(ref removed.Subscriptions);
         }
     }
 

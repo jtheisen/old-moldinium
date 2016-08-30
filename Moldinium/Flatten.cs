@@ -24,11 +24,10 @@ namespace IronStone.Moldinium
 
         class FlattenOuterListAttachment<T>
         {
-            public IDisposable Subscription { get; set; }
-            public Id? LastItemKey { get; set; }
-            public Id? PreviousId { get; set; }
-            public Subject<Id> InboundRefreshRequest { get; set; }
-            public Dictionary<Id, Id> IncomingToOutgoingKeyLookup { get; set; }
+            public ILiveListSubscription subscription;
+            public Id? lastItemKey;
+            public Id? previousId;
+            public Dictionary<Id, Id> incomingToOutgoingKeyLookup;
         }
 
         /// <summary>
@@ -39,22 +38,21 @@ namespace IronStone.Moldinium
         /// <returns>The flattened list.</returns>
         public static ILiveList<T> Flatten<T>(this ILiveList<ILiveList<T>> listOfLists)
         {
-            return LiveList.Create<T>((onNext, inboundRefreshRequest) =>
+            return LiveList.Create<T>(onNext =>
             {
                 var outerAttachments = new Dictionary<Id, FlattenOuterListAttachment<T>>();
 
                 // inner incoming id -> outer incoming id it belongs to
                 var innerToOuterKeyLookup = new Dictionary<Id, Id>();
 
-                var inboundRefreshRequestSubscription = inboundRefreshRequest?.Subscribe(id =>
-                {
+                Action<Id> handleInboundRefreshRequest = id => {
                     var listKey = innerToOuterKeyLookup[id];
 
                     var attachment = outerAttachments[listKey];
 
                     // We delegate the refresh request to the correct inner live list.
-                    attachment.InboundRefreshRequest.OnNext(id);
-                });
+                    attachment.subscription.Refresh(id);
+                };
 
                 var listOfListsSubscription = listOfLists.Subscribe((type, item, id, previousId) =>
                 {
@@ -65,18 +63,12 @@ namespace IronStone.Moldinium
 
                             outerAttachments.Add(id, attachment);
 
-                            attachment.PreviousId = previousId;
-
-                            attachment.InboundRefreshRequest = new Subject<Id>();
+                            attachment.previousId = previousId;
 
                             // We're translating keys as all incoming keys of all lists may not be unique.
-                            attachment.IncomingToOutgoingKeyLookup = new Dictionary<Id, Id>();
+                            attachment.incomingToOutgoingKeyLookup = new Dictionary<Id, Id>();
 
-                            var outboundRefreshRequests = new Subject<Id>();
-
-                            attachment.InboundRefreshRequest.Subscribe(t => outboundRefreshRequests.OnNext(t));
-
-                            attachment.Subscription = item.Subscribe((type2, item2, key2, previousKey2) =>
+                            attachment.subscription = item.Subscribe((type2, item2, key2, previousKey2) =>
                             {
                                 Id nkey2;
 
@@ -85,23 +77,23 @@ namespace IronStone.Moldinium
                                     case ListEventType.Add:
                                         nkey2 = IdHelper.Create();
 
-                                        attachment.IncomingToOutgoingKeyLookup[key2] = nkey2;
+                                        attachment.incomingToOutgoingKeyLookup[key2] = nkey2;
 
                                         innerToOuterKeyLookup[key2] = id;
 
-                                        if (previousKey2 == attachment.LastItemKey)
+                                        if (previousKey2 == attachment.lastItemKey)
                                         {
-                                            attachment.LastItemKey = key2;
+                                            attachment.lastItemKey = key2;
                                         }
                                         break;
                                     case ListEventType.Remove:
-                                        nkey2 = attachment.IncomingToOutgoingKeyLookup[key2];
+                                        nkey2 = attachment.incomingToOutgoingKeyLookup[key2];
 
                                         innerToOuterKeyLookup.Remove(key2);
 
-                                        if (key2 == attachment.LastItemKey)
+                                        if (key2 == attachment.lastItemKey)
                                         {
-                                            attachment.LastItemKey = previousKey2;
+                                            attachment.lastItemKey = previousKey2;
                                         }
                                         break;
                                     default:
@@ -110,12 +102,12 @@ namespace IronStone.Moldinium
 
                                 if (previousKey2 == null)
                                 {
-                                    if (attachment.PreviousId.HasValue)
+                                    if (attachment.previousId.HasValue)
                                     {
-                                        var previousAttachment = outerAttachments[attachment.PreviousId.Value];
+                                        var previousAttachment = outerAttachments[attachment.previousId.Value];
 
-                                        var npreviousKey2 = previousAttachment.LastItemKey
-                                            .ApplyTo(attachment.IncomingToOutgoingKeyLookup);
+                                        var npreviousKey2 = previousAttachment.lastItemKey
+                                            .ApplyTo(attachment.incomingToOutgoingKeyLookup);
 
                                         onNext(type2, item2, nkey2, npreviousKey2);
                                     }
@@ -126,28 +118,25 @@ namespace IronStone.Moldinium
                                 }
                                 else
                                 {
-                                    var npreviousKey2 = previousKey2.ApplyTo(attachment.IncomingToOutgoingKeyLookup);
+                                    var npreviousKey2 = previousKey2.ApplyTo(attachment.incomingToOutgoingKeyLookup);
 
                                     onNext(type2, item2, nkey2, npreviousKey2);
                                 }
 
-                            }, outboundRefreshRequests);
+                            });
                             break;
 
                         case ListEventType.Remove:
                             var oldAttachment = outerAttachments[id];
 
-                            oldAttachment.Subscription.Dispose();
+                            InternalExtensions.DisposeSafely(ref oldAttachment.subscription);
 
                             outerAttachments.Remove(id);
                             break;
                     }
-                }, null); // FIXME: null!?
+                });
 
-                return new CompositeDisposable(
-                    inboundRefreshRequestSubscription ?? Disposable.Empty,
-                    listOfListsSubscription
-                    );
+                return new ActionLiveListSubscription(handleInboundRefreshRequest, listOfListsSubscription);
             });
         }
     }

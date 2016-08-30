@@ -1,12 +1,6 @@
 ﻿using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Collections.Specialized;
-using System.Linq;
 using System.Linq.Expressions;
 using System.Reactive.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace IronStone.Moldinium
 {
@@ -52,13 +46,13 @@ namespace IronStone.Moldinium
     {
         public static partial class LiveList
         {
-            private static IObservable<T> Aggregate<S, T>(ILiveList<S> s, Func<S, T> selector, IGroupOperations<T> go, T def = default(T))
+            private static IObservable<TAggregate> Aggregate<TSource, TAggregate>(ILiveList<TSource> s, Func<TSource, TAggregate> selector, IGroupOperations<TAggregate> go, TAggregate def = default(TAggregate))
             {
-                return Observable.Create<T>(o =>
+                return Observable.Create<TAggregate>(o =>
                 {
-                    T value = def;
+                    TAggregate value = def;
 
-                    BinaryOperation<T>
+                    BinaryOperation<TAggregate>
                         forward = go.Forward,
                         backward = go.Backward;
 
@@ -77,7 +71,7 @@ namespace IronStone.Moldinium
                         }
 
                         o.OnNext(value);
-                    }, null);
+                    });
                 });
             }
 

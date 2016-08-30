@@ -396,25 +396,27 @@ namespace IronStone.Moldinium
 
         protected virtual void OnEvaluated() { }
 
-        public IDisposable Subscribe(DLiveListObserver<T> onNext, IObservable<Id> refreshRequested = null)
+        public ILiveListSubscription Subscribe(DLiveListObserver<T> onNext)
         {
             for (var i = 0; i < items.Count; ++i)
                 onNext(ListEventType.Add, items[i], ids[i], i > 0 ? ids[i - 1] : (Id?)null);
 
-            return new CompositeDisposable(
-                refreshRequested?.Subscribe(id =>
-                {
-                    var index = ids.IndexOf(id);
+            Action<Id> handleRefreshRequest = id =>
+            {
+                var index = ids.IndexOf(id);
 
-                    if (index < 0) throw new Exception("Item not found.");
+                if (index < 0) throw new Exception("Item not found.");
 
-                    var item = items[index];
+                var item = items[index];
 
-                    var previousId = index == 0 ? (Id?)null : ids[index - 1];
+                var previousId = index == 0 ? (Id?)null : ids[index - 1];
 
-                    onNext(ListEventType.Remove, item, id, previousId);
-                    onNext(ListEventType.Add, item, id, previousId);
-                }) ?? Disposable.Empty,
+                onNext(ListEventType.Remove, item, id, previousId);
+                onNext(ListEventType.Add, item, id, previousId);
+            };
+
+            return LiveListSubscription.Create(
+                handleRefreshRequest,
                 events.Subscribe(v => onNext(v.Type, v.Item, v.Id, v.PreviousId))
             );
         }

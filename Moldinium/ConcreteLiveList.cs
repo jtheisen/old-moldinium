@@ -8,14 +8,14 @@ namespace IronStone.Moldinium
     // Pretty much every ILiveList<T> really is actually this thing here.
     class ConcreteLiveList<T> : ILiveList<T>, IEnumerable<T>, INotifyCollectionChanged
     {
-        public ConcreteLiveList(Func<DLiveListObserver<T>, IObservable<Id>, IDisposable> subscribe)
+        public ConcreteLiveList(Func<DLiveListObserver<T>, ILiveListSubscription> subscribe)
         {
             this.subscribe = subscribe;
         }
 
-        public IDisposable Subscribe(DLiveListObserver<T> observer, IObservable<Id> refresh)
+        public ILiveListSubscription Subscribe(DLiveListObserver<T> observer)
         {
-            return subscribe(observer, refresh);
+            return subscribe(observer);
         }
 
         event NotifyCollectionChangedEventHandler INotifyCollectionChanged.CollectionChanged {
@@ -25,7 +25,7 @@ namespace IronStone.Moldinium
                     if (null != selfSubscription) throw new Exception(
                         "Unexpected state in ConcreteLiveList on collection change subscription.");
                     manifestation = new List<Id>();
-                    selfSubscription = subscribe(ProcessEvent, null);
+                    selfSubscription = subscribe(ProcessEvent);
                 }
 
                 collectionChanged += value;
@@ -38,8 +38,7 @@ namespace IronStone.Moldinium
                 {
                     if (null == selfSubscription) throw new Exception(
                         "Unexpected state in ConcreteLiveList on collection change unsubscription.");
-                    selfSubscription.Dispose();
-                    selfSubscription = null;
+                    InternalExtensions.DisposeSafely(ref selfSubscription);
                     manifestation = null;
                 }
             }
@@ -49,7 +48,7 @@ namespace IronStone.Moldinium
         {
             var lst = new List<T>();
 
-            using (subscribe((type, item, id, previousId) => lst.Add(item), null)) { }
+            using (subscribe((type, item, id, previousId) => lst.Add(item))) { }
 
             return lst.GetEnumerator();
         }
@@ -86,9 +85,9 @@ namespace IronStone.Moldinium
             }
         }
 
-        Func<DLiveListObserver<T>, IObservable<Id>, IDisposable> subscribe;
+        Func<DLiveListObserver<T>, ILiveListSubscription> subscribe;
 
-        IDisposable selfSubscription = null;
+        ILiveListSubscription selfSubscription = null;
 
         List<Id> manifestation = null;
 

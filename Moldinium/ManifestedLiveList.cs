@@ -5,13 +5,25 @@ using System.Collections.Generic;
 namespace IronStone.Moldinium
 {
     // Needed for tests, let's see what else we need it for.
-    public class ManifestedLiveList<T> : ICollection, IEnumerable<T>, IEnumerable
+    public class ManifestedLiveList<T> : ICollection, IEnumerable<T>, IEnumerable, IDisposable
     {
+        List<T> items = new List<T>();
+        List<Id> keys = new List<Id>();
+
+        ILiveList<T> nested;
+
+        ILiveListSubscription subscription;
+
         public ManifestedLiveList(ILiveList<T> nested)
         {
             this.nested = nested;
 
-            nested.Subscribe(OnNext, null);
+            subscription = nested.Subscribe(OnNext);
+        }
+
+        public void Dispose()
+        {
+            InternalExtensions.DisposeSafely(ref subscription);
         }
 
         void OnNext(ListEventType type, T item, Id id, Id? previousId)
@@ -53,10 +65,5 @@ namespace IronStone.Moldinium
         Object ICollection.SyncRoot { get { return this; } }
 
         Boolean ICollection.IsSynchronized { get { return false; } }
-
-        List<T> items = new List<T>();
-        List<Id> keys = new List<Id>();
-
-        ILiveList<T> nested;
     }
 }

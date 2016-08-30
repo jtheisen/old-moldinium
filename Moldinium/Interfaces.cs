@@ -108,27 +108,4 @@ namespace IronStone.Moldinium
     {
         void OnNext(ListEventType type, T item, Id id, Id? previousId);
     }
-
-
-    public class LiveListSubscription<T> : ILiveListSubscription
-    {
-        Action<Id> refresh;
-        IDisposable[] disposables;
-
-        public LiveListSubscription(Action<Id> refresh, params IDisposable[] disposables)
-        {
-            this.disposables = disposables;
-        }
-
-        public void Dispose()
-        {
-            for (int i = 0; i < disposables.Length; ++i)
-                InternalExtensions.DisposeSafely(ref disposables[i]);
-        }
-
-        public void Refresh(Id id)
-        {
-            refresh?.Invoke(id);
-        }
-    }
 }
