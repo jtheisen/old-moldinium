@@ -45,37 +45,37 @@ namespace IronStone.Moldinium
         public TElement element;
     }
 
-    //public class LiveLookup<TKey, TSource, TElement> : ILiveLookup<TKey, TElement>
-    //{
-    //    Func<TSource, TKey> keySelector;
-    //    Func<TSource, TElement> elementSelector;
-    //    Dictionary<TKey, LiveListGrouping<TKey, TElement>> groupingsByGroupingKey;
+    public class LiveLookup<TKey, TSource, TElement> : ILiveLookup<TKey, TElement>
+    {
+        Func<TSource, TKey> keySelector;
+        Func<TSource, TElement> elementSelector;
+        Dictionary<TKey, LiveListGrouping<TKey, TElement>> groupingsByGroupingKey;
 
-    //    Dictionary<Id, LiveLookupInfo<TKey, TSource, TElement>> infos;
+        Dictionary<Id, LiveLookupInfo<TKey, TSource, TElement>> infos;
 
-    //    public LiveLookup(ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, IEqualityComparer<TKey> comparer)
-    //    {
-    //        this.keySelector = keySelector;
-    //        this.elementSelector = elementSelector;
-    //    }
+        public LiveLookup(ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, IEqualityComparer<TKey> comparer)
+        {
+            this.keySelector = keySelector;
+            this.elementSelector = elementSelector;
+        }
 
-    //    void Handle(ListEventType type, TSource item, Id id, Id? previousId)
-    //    {
-    //        LiveLookupInfo<TKey, TSource, TElement> info;
+        void Handle(ListEventType type, TSource item, Id id, Id? previousId)
+        {
+            LiveLookupInfo<TKey, TSource, TElement> info;
 
-    //        var found = infos.TryGetValue(id, out info);
+            var found = infos.TryGetValue(id, out info);
 
-    //        switch (type)
-    //        {
-    //            case ListEventType.Add:
-    //                var lkey = keySelector(item);
-    //                info.element = elementSelector(item);
-    //                break;
-    //            case ListEventType.Remove:
-    //                break;
-    //        }
-    //    }
-    //}
+            switch (type)
+            {
+                case ListEventType.Add:
+                    var key = keySelector(item);
+                    info.element = elementSelector(item);
+                    break;
+                case ListEventType.Remove:
+                    break;
+            }
+        }
+    }
 
     // FIXME:
     /*
@@ -85,7 +85,7 @@ namespace IronStone.Moldinium
      * 
      * Also note that the problem of a lookup preserving order is the same problem as a where preserving order.
      */
-    public class LiveLookup<TKey, TSource, TElement> : ILiveLookup<TKey, TElement>
+    public class LiveLookup2<TKey, TSource, TElement> : ILiveLookup<TKey, TElement>
     {
         Func<TSource, TKey> keySelector;
         Func<TSource, TElement> elementSelector;

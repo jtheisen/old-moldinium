@@ -142,7 +142,7 @@ namespace IronStone.Moldinium
                             outerAttachments.Remove(id);
                             break;
                     }
-                }, null);
+                }, null); // FIXME: null!?
 
                 return new CompositeDisposable(
                     inboundRefreshRequestSubscription ?? Disposable.Empty,

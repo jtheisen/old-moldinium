@@ -31,6 +31,47 @@ This must be implemented, properly tested, documented and equipped with samples.
 optimization:
 - make evaluations allocation-free in the absence of any watchables
 
+## ILiveListSubscription
+
+    public interface ILiveList<out T>
+    {
+        ILiveListSubscription Subscribe(DLiveListObserver<T> observer);
+    }
+
+and
+
+    public interface ILiveListSubscription : IDisposable
+    {
+        void Refresh(Id id);
+    }
+
+is the better interface. It reduces the number of allocations needed and, more importantly, is easier to read in the implementations.
+
+One would use this concrete implementation:
+
+    public class LiveListSubscription<T> : ILiveListSubscription
+    {
+        Action<Id> refresh;
+        IDisposable[] disposables;
+
+        public LiveListSubscription(Action<Id> refresh, params IDisposable[] disposables)
+        {
+            this.disposables = disposables;
+        }
+
+        public void Dispose()
+        {
+            for (int i = 0; i < disposables.Length; ++i)
+                InternalExtensions.DisposeSafely(ref disposables[i]);
+        }
+
+        public void Refresh(Id id)
+        {
+            refresh?.Invoke(id);
+        }
+    }
+
+
 
 # Random thoughts
 

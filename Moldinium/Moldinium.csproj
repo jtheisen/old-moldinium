@@ -60,6 +60,7 @@
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Bilateral.cs" />
     <Compile Include="ConcreteCommand.cs" />
     <Compile Include="Aggregates.cs" />
     <Compile Include="ConcreteLiveList.cs" />

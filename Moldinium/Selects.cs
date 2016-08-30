@@ -57,6 +57,8 @@ namespace IronStone.Moldinium
                     }
                 }, upwardsRefreshRequests);
 
+                Action<Id> thisIsPutIntoTheReturnedSubscription = id => subscription.Refresh(reverseMapping[id]);
+
                 return new CompositeDisposable(
                     downwardsRefreshRequests?.Subscribe(id => upwardsRefreshRequests.OnNext(reverseMapping[id])) ?? Disposable.Empty,
                     subscription);

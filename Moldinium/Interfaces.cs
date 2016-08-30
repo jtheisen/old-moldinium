@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Reactive.Disposables;
 
 namespace IronStone.Moldinium
 {
@@ -83,6 +84,11 @@ namespace IronStone.Moldinium
         }
     }
 
+    public interface ILiveListSubscription : IDisposable
+    {
+        void Refresh(Id id);
+    }
+
     /// <summary>
     /// A live list can also be subscribed on to listen for changes, not quite unlike an
     /// <seealso cref="INotifyCollectionChanged" />. Unlike <seealso cref="INotifyCollectionChanged" />,
@@ -93,7 +99,7 @@ namespace IronStone.Moldinium
     /// <typeparam name="T">The item type of the list.</typeparam>
     public interface ILiveList<out T>
     {
-        IDisposable Subscribe(DLiveListObserver<T> observer, IObservable<Id> refreshRequested);
+        ILiveListSubscription Subscribe(DLiveListObserver<T> observer);
     }
 
     public delegate void DLiveListObserver<in T>(ListEventType type, T item, Id id, Id? previousId);
@@ -101,7 +107,28 @@ namespace IronStone.Moldinium
     public interface ILiveListObserver<in T>
     {
         void OnNext(ListEventType type, T item, Id id, Id? previousId);
+    }
 
-        IObservable<Id> RefreshRequested { get; }
+
+    public class LiveListSubscription<T> : ILiveListSubscription
+    {
+        Action<Id> refresh;
+        IDisposable[] disposables;
+
+        public LiveListSubscription(Action<Id> refresh, params IDisposable[] disposables)
+        {
+            this.disposables = disposables;
+        }
+
+        public void Dispose()
+        {
+            for (int i = 0; i < disposables.Length; ++i)
+                InternalExtensions.DisposeSafely(ref disposables[i]);
+        }
+
+        public void Refresh(Id id)
+        {
+            refresh?.Invoke(id);
+        }
     }
 }
