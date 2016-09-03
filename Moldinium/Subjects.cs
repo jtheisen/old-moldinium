@@ -5,6 +5,22 @@ using System.Reactive.Subjects;
 
 namespace IronStone.Moldinium
 {
+
+    public class LiveListSubject<TSource> : AbstractLiveList<TSource>, ILiveListObserver<TSource>
+    {
+        // FIXME: do manifestation
+
+        protected override void Bootstrap(DLiveListObserver<TSource> observer)
+        {
+            throw new NotImplementedException();
+        }
+
+        protected override void Refresh(DLiveListObserver<TSource> observer, Id id)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
     // this should be interal
     public abstract class AbstractLiveList<TSource> : ILiveList<TSource>
     {
@@ -43,7 +59,7 @@ namespace IronStone.Moldinium
             return new Subscription(this, observer);
         }
 
-        protected void OnNext(ListEventType type, TSource item, Id id, Id? previousId)
+        public void OnNext(ListEventType type, TSource item, Id id, Id? previousId)
         {
             foreach (var subscription in subscriptions)
             {

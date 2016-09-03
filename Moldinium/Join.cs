@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
@@ -60,10 +61,11 @@ namespace IronStone.Moldinium
             public TKey nextKey;
             public Id lastId;
 
-            public Grouping(LiveLookup<TKey, TSource, TElement>  container, TKey key, TKey previousKey)
+            public Grouping(LiveLookup<TKey, TSource, TElement>  container, TKey key, TKey previousKey, TKey nextKey)
             {
                 this.container = container;
                 this.key = key;
+                this.nextKey = nextKey;
             }
 
             public TKey Key { get { return key; } }
@@ -109,6 +111,8 @@ namespace IronStone.Moldinium
             switch (type)
             {
                 case ListEventType.Add:
+                    Debug.Assert(!found);
+
                     var key = info.key = keySelector(item);
                     var element = info.element = elementSelector(item);
                     info.previousId = previousId;
@@ -116,18 +120,36 @@ namespace IronStone.Moldinium
                     var previousIdCandidate = previousId;
                     Info info2 = info;
                     while (previousIdCandidate.HasValue && infos.TryGetValue(previousIdCandidate.Value, out info2) && !comparer.Equals(info2.key, key)) ;
-                    info.previousIdInSameGroup = previousIdCandidate;
+                    var previousIdInSameGroup = info.previousIdInSameGroup = previousIdCandidate;
 
                     infos[id] = info;
 
 
                     if (!groupingsByGroupingKey.TryGetValue(key, out grouping))
                     {
-                        grouping = new Grouping(this, key, )
+                        grouping = new Grouping(this, key, /* find previous key by working forward from key of previousId */, /* find next key analogously */);
+                        OnNext(ListEventType.Add, grouping, id, previousGrouping.id);
                     }
+
+                    // FIXME: we really ought to translate the ids
+                    grouping.OnNext(ListEventType.Add, element, id, previousIdInSameGroup);
 
                     break;
                 case ListEventType.Remove:
+                    Debug.Assert(found);
+
+                    grouping = groupingsByGroupingKey[info.key];
+
+                    // FIXME: maintain linked list in elements
+                    grouping.OnNext(ListEventType.Add, info.element, id, info.previousIdInSameGroup);
+
+                    if (grouping.Count == 0)
+                    {
+                        // FIXME: maintain linked list in groupings
+                        groupingsByGroupingKey.Remove(info.key);
+                        OnNext(ListEventType.Remove, grouping, grouping.id, grouping.previousId);
+                    }
+
                     break;
             }
         }
@@ -161,116 +183,6 @@ namespace IronStone.Moldinium
         {
             InternalExtensions.DisposeSafely(ref sourceSubscription);
         }
-    }
-
-    // FIXME:
-    /*
-     * We should have two lookups in the long run:
-     * - one for smaller lists that preserves order and
-     * - one for larger lists based on OrderedLiveLists that takes the order from that order
-     * 
-     * Also note that the problem of a lookup preserving order is the same problem as a where preserving order.
-     */
-    public class LiveLookup2<TKey, TSource, TElement> : ILiveLookup<TKey, TElement>
-    {
-        Func<TSource, TKey> keySelector;
-        Func<TSource, TElement> elementSelector;
-        Dictionary<TKey, LiveListGrouping<TKey, TElement>> groupingsByGroupingKey;
-        Dictionary<Id, TKey> groupingKeysByKey;
-
-        IObservable<Id> refreshRequested;
-
-        LiveList<ILiveListGrouping<TKey, TElement>> groupings;
-
-        Dictionary<Id, Attachment> manifestation;
-
-        IDisposable subscription;
-
-        struct Attachment
-        {
-            public TElement element;
-        }
-
-        public LiveLookup(ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, IEqualityComparer<TKey> comparer)
-        {
-            this.keySelector = keySelector;
-            this.elementSelector = elementSelector;
-
-            groupingsByGroupingKey = new Dictionary<TKey, LiveListGrouping<TKey, TElement>>(comparer);
-            groupingKeysByKey = new Dictionary<Id, TKey>();
-            groupings = new LiveList<ILiveListGrouping<TKey, TElement>>();
-
-            manifestation = new Dictionary<Id, Attachment>();
-
-            subscription = source.Subscribe(Handle);
-        }
-
-        void Handle(ListEventType type, TSource item, Id id, Id? previousId)
-        {
-            LiveListGrouping<TKey, TElement> grouping;
-            TKey groupingKey;
-
-            Attachment attachment;
-
-            switch (type)
-            {
-                case ListEventType.Add:
-                    groupingKey = keySelector(item); // FIXME: watchable support
-
-                    if (!groupingsByGroupingKey.TryGetValue(groupingKey, out grouping))
-                    {
-                        var newKey = IdHelper.Create();
-                        groupingsByGroupingKey[groupingKey] = grouping = new LiveListGrouping<TKey, TElement>(groupingKey);
-                        groupingKeysByKey[newKey] = groupingKey;
-                        groupings.Add(grouping);
-                    }
-
-                    // FIXME: watchables
-                    var element = elementSelector(item);
-
-                    attachment.element = element;
-
-                    manifestation[id] = attachment;
-
-                    // FIXME: previousId is bs
-                    grouping.OnNext(type, element, id, previousId);
-
-                    break;
-                case ListEventType.Remove:
-                    groupingKey = groupingKeysByKey[id];
-
-                    if (!groupingsByGroupingKey.TryGetValue(groupingKey, out grouping))
-                        throw new Exception("Grouping id not found.");
-
-                    if (!manifestation.TryGetValue(id, out attachment))
-                        throw new Exception("Id not found.");
-
-                    grouping.OnNext(type, attachment.element, id, previousId);
-
-                    if (grouping.Count == 0)
-                    {
-                        groupingsByGroupingKey.Remove(groupingKey);
-                        groupingKeysByKey.Remove(id);
-                        // FIXME: Isn't this linear time?
-                        groupings.Remove(grouping);
-                    }
-
-                    groupingsByGroupingKey.Remove(groupingKey);
-                    break;
-            }
-        }
-
-        public ILiveListSubscription Subscribe(DLiveListObserver<ILiveListGrouping<TKey, TElement>> observer)
-        {
-            return groupings.Subscribe(observer);
-        }
-
-        public void Dispose()
-        {
-            subscription.Dispose();
-        }
-
-        public ILiveList<TElement> this[TKey id] { get { return groupingsByGroupingKey[id]; } }
     }
 
     class GroupedLivedList<TKey, TSource, TElement> : IGroupedLiveList<TKey, TElement>
@@ -403,8 +315,8 @@ namespace IronStone.Moldinium
         {
             public Id id;
             public TKey lkey;
-            public AbstractLiveList<TOuter> outerSubject;
-            public AbstractLiveList<TInner> innerSubject;
+            public LiveListSubject<TOuter> outerSubject;
+            public LiveListSubject<TInner> innerSubject;
             public IDisposable outerSubscription;
             public IDisposable innerSubscription;
         }
