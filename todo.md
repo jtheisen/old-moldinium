@@ -93,6 +93,7 @@ I don't believe it's correct.  INotifyPropertyChange should deliver all events o
 
 The factory could call .ManifastLazily or some such on live lists that are returned from getters.
 
+- Guarding against various forms of reentrance
 
 ## The select with watchables problems
 

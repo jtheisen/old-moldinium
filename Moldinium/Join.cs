@@ -12,7 +12,7 @@ namespace IronStone.Moldinium
 {
     public interface ILiveListGrouping<TKey, TSource> : ILiveList<TSource>
     {
-        TKey Id { get; }
+        TKey Key { get; }
     }
 
     public interface IGroupedLiveList<TKey, TElement> : ILiveList<ILiveListGrouping<TKey, TElement>>
@@ -25,55 +25,141 @@ namespace IronStone.Moldinium
         ILiveList<TElement> this[TKey id] { get; }
     }
 
-    public class LiveListGrouping<TKey, TSource> : LiveListSubject<TSource>, ILiveListGrouping<TKey, TSource>
-    {
-        TKey id;
-
-        public LiveListGrouping(TKey id)
-        {
-            this.id = id;
-        }
-
-        public TKey Id { get { return id; } }
-    }
-
-    struct LiveLookupInfo<TKey, TSource, TElement>
-    {
-        public TKey key;
-        public Id previousId;
-        public Id previousIdInSameGroup;
-        public TElement element;
-    }
-
-    public class LiveLookup<TKey, TSource, TElement> : ILiveLookup<TKey, TElement>
+    // FIXME this must be internal
+    public class LiveLookup<TKey, TSource, TElement> : AbstractLiveList<ILiveListGrouping<TKey, TElement>>, ILiveLookup<TKey, TElement>
     {
         Func<TSource, TKey> keySelector;
         Func<TSource, TElement> elementSelector;
-        Dictionary<TKey, LiveListGrouping<TKey, TElement>> groupingsByGroupingKey;
+        IEqualityComparer<TKey> comparer;
 
-        Dictionary<Id, LiveLookupInfo<TKey, TSource, TElement>> infos;
+        ILiveListSubscription sourceSubscription;
+
+        Dictionary<TKey, Grouping> groupingsByGroupingKey;
+        Dictionary<Id, Grouping> groupings;
+        Id lastId;
+        Boolean haveElements;
+
+        Dictionary<Id, Info> infos;
+
+        struct Info
+        {
+            public TKey key;
+            public Id? previousId;
+            public Id? previousIdInSameGroup;
+            public TElement element;
+        }
+
+        class Grouping : AbstractLiveList<TElement>, ILiveListGrouping<TKey, TElement>
+        {
+            public Id id;
+            public Id? previousId;
+
+            public LiveLookup<TKey, TSource, TElement> container;
+            public TKey key;
+            public TKey previousKey;
+            public TKey nextKey;
+            public Id lastId;
+
+            public Grouping(LiveLookup<TKey, TSource, TElement>  container, TKey key, TKey previousKey)
+            {
+                this.container = container;
+                this.key = key;
+            }
+
+            public TKey Key { get { return key; } }
+
+            protected override void Refresh(DLiveListObserver<TElement> observer, Id id)
+            {
+                container.sourceSubscription.Refresh(id);
+            }
+
+            protected override void Bootstrap(DLiveListObserver<TElement> observer)
+            {
+                Info info = container.infos[lastId];
+                Id id = lastId;
+
+                do
+                {
+                    // FIXME wrong order!
+                    info = container.infos[id];
+                    observer(ListEventType.Add, info.element, lastId, info.previousIdInSameGroup);
+                }
+                while (info.previousIdInSameGroup.HasValue);
+            }
+        }
+
+        public ILiveList<TElement> this[TKey id] => groupingsByGroupingKey[id];
 
         public LiveLookup(ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, IEqualityComparer<TKey> comparer)
         {
             this.keySelector = keySelector;
             this.elementSelector = elementSelector;
+            this.comparer = comparer;
+            this.sourceSubscription = source.Subscribe(Handle);
         }
 
         void Handle(ListEventType type, TSource item, Id id, Id? previousId)
         {
-            LiveLookupInfo<TKey, TSource, TElement> info;
+            Info info;
 
             var found = infos.TryGetValue(id, out info);
+
+            Grouping grouping;
 
             switch (type)
             {
                 case ListEventType.Add:
-                    var key = keySelector(item);
-                    info.element = elementSelector(item);
+                    var key = info.key = keySelector(item);
+                    var element = info.element = elementSelector(item);
+                    info.previousId = previousId;
+
+                    var previousIdCandidate = previousId;
+                    Info info2 = info;
+                    while (previousIdCandidate.HasValue && infos.TryGetValue(previousIdCandidate.Value, out info2) && !comparer.Equals(info2.key, key)) ;
+                    info.previousIdInSameGroup = previousIdCandidate;
+
+                    infos[id] = info;
+
+
+                    if (!groupingsByGroupingKey.TryGetValue(key, out grouping))
+                    {
+                        grouping = new Grouping(this, key, )
+                    }
+
                     break;
                 case ListEventType.Remove:
                     break;
             }
+        }
+
+        protected override void Bootstrap(DLiveListObserver<ILiveListGrouping<TKey, TElement>> observer)
+        {
+            if (!haveElements) return;
+
+            var id = lastId;
+
+            Grouping grouping;
+
+            do
+            {
+                // FIXME wrong order!
+                grouping = groupings[id];
+                observer(ListEventType.Add, grouping, grouping.id, grouping.previousId);
+            }
+            while (grouping.previousId.HasValue);
+        }
+
+        protected override void Refresh(DLiveListObserver<ILiveListGrouping<TKey, TElement>> observer, Id id)
+        {
+            var grouping = groupings[id];
+
+            observer(ListEventType.Remove, grouping, grouping.id, grouping.previousId);
+            observer(ListEventType.Add, grouping, grouping.id, grouping.previousId);
+        }
+
+        public void Dispose()
+        {
+            InternalExtensions.DisposeSafely(ref sourceSubscription);
         }
     }
 
@@ -235,7 +321,7 @@ namespace IronStone.Moldinium
                 {
                     DoubleGroupByInfo<TKey, TOuter, TInner> group;
 
-                    var found = groups.TryGetValue(item.Id, out group);
+                    var found = groups.TryGetValue(item.Key, out group);
 
                     switch (type)
                     {
@@ -243,7 +329,7 @@ namespace IronStone.Moldinium
                             if (!found)
                             {
                                 group.id = IdHelper.Create();
-                                group.lkey = item.Id;
+                                group.lkey = item.Key;
                                 group.outerSubject = new LiveListSubject<TOuter>();
                                 group.innerSubject = new LiveListSubject<TInner>();
 
@@ -267,7 +353,7 @@ namespace IronStone.Moldinium
                 {
                     DoubleGroupByInfo<TKey, TOuter, TInner> group;
 
-                    var found = groups.TryGetValue(item.Id, out group);
+                    var found = groups.TryGetValue(item.Key, out group);
 
                     switch (type)
                     {
@@ -275,7 +361,7 @@ namespace IronStone.Moldinium
                             if (!found)
                             {
                                 group.id = IdHelper.Create();
-                                group.lkey = item.Id;
+                                group.lkey = item.Key;
                                 group.outerSubject = new LiveListSubject<TOuter>();
                                 group.innerSubject = new LiveListSubject<TInner>();
 
@@ -305,7 +391,7 @@ namespace IronStone.Moldinium
                 });
 
                 //FIXME: kill all subjects
-                return new ActionLiveListSubscription(
+                return LiveListSubscription.Create(
                     handleRefreshRequest,
                     innerSubscription,
                     outerSubscription,
@@ -317,8 +403,8 @@ namespace IronStone.Moldinium
         {
             public Id id;
             public TKey lkey;
-            public LiveListSubject<TOuter> outerSubject;
-            public LiveListSubject<TInner> innerSubject;
+            public AbstractLiveList<TOuter> outerSubject;
+            public AbstractLiveList<TInner> innerSubject;
             public IDisposable outerSubscription;
             public IDisposable innerSubscription;
         }
@@ -338,12 +424,12 @@ namespace IronStone.Moldinium
 
         public static ILiveList<TResult> GroupBy<TSource, TKey, TResult>(this ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TKey, ILiveList<TSource>, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)
         {
-            return source.GroupBy(keySelector, comparer).Select(g => resultSelector(g.Id, g));
+            return source.GroupBy(keySelector, comparer).Select(g => resultSelector(g.Key, g));
         }
 
         public static ILiveList<TResult> GroupBy<TSource, TKey, TElement, TResult>(this ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, Func<TKey, ILiveList<TElement>, TResult> resultSelector, IEqualityComparer<TKey> comparer = null)
         {
-            return source.GroupBy(keySelector, elementSelector, comparer).Select(g => resultSelector(g.Id, g));
+            return source.GroupBy(keySelector, elementSelector, comparer).Select(g => resultSelector(g.Key, g));
         }
 
         public static ILiveList<TResult> GroupJoin<TOuter, TInner, TKey, TResult>(this ILiveList<TOuter> outer, ILiveList<TInner> inner,

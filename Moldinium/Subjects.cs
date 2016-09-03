@@ -5,30 +5,51 @@ using System.Reactive.Subjects;
 
 namespace IronStone.Moldinium
 {
-    // FIXME: Why isn't this manifested? A late subscription doesn't get the list!
-    public class LiveListSubject<TSource> : ILiveList<TSource>, ILiveListObserver<TSource>
+    // this should be interal
+    public abstract class AbstractLiveList<TSource> : ILiveList<TSource>
     {
-        public ILiveListSubscription Subscribe(DLiveListObserver<TSource> observer)
+        List<Subscription> subscriptions = new List<Subscription>();
+
+        class Subscription : ILiveListSubscription
         {
-            var info = new ObserverInfo() { observer = observer };
+            public AbstractLiveList<TSource> container;
+            public DLiveListObserver<TSource> observer;
+            public ILiveListSubscription subscription;
 
-            info.subscription = LiveListSubscription.Create(
-                id => { }, // FIXME: now that can't really work, can it?
-                Disposable.Create(() => observers.Remove(info))
-                );
+            public Subscription(AbstractLiveList<TSource> container, DLiveListObserver<TSource> observer)
+            {
+                this.container = container;
+                this.observer = observer;
 
-            observers.Add(info);
+                container.subscriptions.Add(this);
+            }
 
-            return info.subscription;
+            public void Dispose()
+            {
+                container.subscriptions.Remove(this);
+            }
+
+            public void Refresh(Id id)
+            {
+                container.Refresh(observer, id);
+            }
         }
 
-        public void OnNext(ListEventType type, TSource item, Id id, Id? previousId)
+        protected abstract void Refresh(DLiveListObserver<TSource> observer, Id id);
+        protected abstract void Bootstrap(DLiveListObserver<TSource> observer);
+
+        public ILiveListSubscription Subscribe(DLiveListObserver<TSource> observer)
         {
-            foreach (var info in observers)
+            return new Subscription(this, observer);
+        }
+
+        protected void OnNext(ListEventType type, TSource item, Id id, Id? previousId)
+        {
+            foreach (var subscription in subscriptions)
             {
                 try
                 {
-                    info.observer(type, item, id, previousId);
+                    subscription.observer(type, item, id, previousId);
                 }
                 catch (Exception)
                 {
@@ -48,13 +69,5 @@ namespace IronStone.Moldinium
         }
 
         public Int32 Count { get; private set; }
-
-        class ObserverInfo
-        {
-            public DLiveListObserver<TSource> observer;
-            public ILiveListSubscription subscription;
-        }
-
-        List<ObserverInfo> observers = new List<ObserverInfo>();
     }
 }
