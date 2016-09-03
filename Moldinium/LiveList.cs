@@ -318,7 +318,7 @@ namespace IronStone.Moldinium
             var id = ids[index];
             items.RemoveAt(index);
             ids.RemoveAt(index);
-            events.OnNext(ListEvent.Make(ListEventType.Remove, removed, id, GetPreviousId(index)));
+            events.OnNext(ListEvent.Make(ListEventType.Remove, removed, id, GetPreviousId(index), GetNextId(index)));
             CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, removed, index));
         }
 
@@ -358,7 +358,7 @@ namespace IronStone.Moldinium
             var id = IdHelper.Create();
             items.Insert(index, item);
             ids.Insert(index, id);
-            events.OnNext(ListEvent.Make(ListEventType.Add, item, id, GetPreviousId(index)));
+            events.OnNext(ListEvent.Make(ListEventType.Add, item, id, GetPreviousId(index), GetNextId(index)));
             CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
         }
 
@@ -389,6 +389,11 @@ namespace IronStone.Moldinium
             return index > 0 ? ids[index - 1] : (Id?)null;
         }
 
+        Id? GetNextId(Int32 index)
+        {
+            return index < Count - 1 ? ids[index + 1] : (Id?)null;
+        }
+
         void AssertItemNotNull(T item, String paramName = "item")
         {
             if (null == item) throw new ArgumentNullException(paramName);
@@ -398,8 +403,10 @@ namespace IronStone.Moldinium
 
         public ILiveListSubscription Subscribe(DLiveListObserver<T> onNext)
         {
-            for (var i = 0; i < items.Count; ++i)
-                onNext(ListEventType.Add, items[i], ids[i], i > 0 ? ids[i - 1] : (Id?)null);
+            var count = items.Count;
+
+            for (var i = 0; i < count; ++i)
+                onNext(ListEventType.Add, items[i], ids[i], GetPreviousId(i), GetNextId(i));
 
             Action<Id> handleRefreshRequest = id =>
             {
@@ -409,15 +416,16 @@ namespace IronStone.Moldinium
 
                 var item = items[index];
 
-                var previousId = index == 0 ? (Id?)null : ids[index - 1];
+                var previousId = GetPreviousId(index);
+                var nextId = GetNextId(index);
 
-                onNext(ListEventType.Remove, item, id, previousId);
-                onNext(ListEventType.Add, item, id, previousId);
+                onNext(ListEventType.Remove, item, id, previousId, nextId);
+                onNext(ListEventType.Add, item, id, previousId, nextId);
             };
 
             return LiveListSubscription.Create(
                 handleRefreshRequest,
-                events.Subscribe(v => onNext(v.Type, v.Item, v.Id, v.PreviousId))
+                events.Subscribe(v => onNext(v.Type, v.Item, v.Id, v.PreviousId, v.NextId))
             );
         }
 

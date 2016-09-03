@@ -11,6 +11,11 @@ namespace IronStone.Moldinium
             return source.HasValue ? dictionary[source.Value] : (Id?)null;
         }
 
+        public static TResult ApplyTo<TSource, TResult>(this TSource source, IDictionary<TSource, TResult> dictionary)
+        {
+            return dictionary[source];
+        }
+
         public static void DisposeSafely<TDisposable>(ref TDisposable disposable)
             where TDisposable : IDisposable
         {

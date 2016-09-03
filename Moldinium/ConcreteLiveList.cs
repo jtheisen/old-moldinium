@@ -48,7 +48,7 @@ namespace IronStone.Moldinium
         {
             var lst = new List<T>();
 
-            using (subscribe((type, item, id, previousId) => lst.Add(item))) { }
+            using (subscribe((type, item, id, previousId, nextId) => lst.Add(item))) { }
 
             return lst.GetEnumerator();
         }
@@ -63,7 +63,7 @@ namespace IronStone.Moldinium
             return GetEnumerator();
         }
 
-        void ProcessEvent(ListEventType type, T item, Id id, Id? previousId)
+        void ProcessEvent(ListEventType type, T item, Id id, Id? previousId, Id? nextId)
         {
             switch (type)
             {

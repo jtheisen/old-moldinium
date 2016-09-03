@@ -35,9 +35,9 @@ namespace IronStone.Moldinium
         /// <returns>
         /// The list event.
         /// </returns>
-        public static ListEvent<T> Make<T>(ListEventType type, T item, Id id, Id? previousId)
+        public static ListEvent<T> Make<T>(ListEventType type, T item, Id id, Id? previousId, Id? nextId)
         {
-            return new ListEvent<T>(type, item, id, previousId);
+            return new ListEvent<T>(type, item, id, previousId, nextId);
         }
     }
 
@@ -64,6 +64,10 @@ namespace IronStone.Moldinium
         /// Gets the id of the previous item.
         /// </summary>
         public Id? PreviousId { get; private set; }
+        /// <summary>
+        /// Gets the id of the next item.
+        /// </summary>
+        public Id? NextId { get; private set; }
 
         //public static readonly Func<ListEvent<T>, T> PreviousProjection = v => v.Previous;
 
@@ -75,12 +79,13 @@ namespace IronStone.Moldinium
         /// <param name="type">Whether to add or remove the item.</param>
         /// <param name="target">The item to add or remove.</param>
         /// <param name="previous">The previous item.</param>
-        public ListEvent(ListEventType type, T target, Id id, Id? previousId)
+        public ListEvent(ListEventType type, T target, Id id, Id? previousId, Id? nextId)
         {
             Type = type;
             Item = target;
             Id = id;
             PreviousId = previousId;
+            NextId = nextId;
         }
     }
 
@@ -102,10 +107,10 @@ namespace IronStone.Moldinium
         ILiveListSubscription Subscribe(DLiveListObserver<T> observer);
     }
 
-    public delegate void DLiveListObserver<in T>(ListEventType type, T item, Id id, Id? previousId);
+    public delegate void DLiveListObserver<in T>(ListEventType type, T item, Id id, Id? previousId, Id? nextId);
 
     public interface ILiveListObserver<in T>
     {
-        void OnNext(ListEventType type, T item, Id id, Id? previousId);
+        void OnNext(ListEventType type, T item, Id id, Id? previousId, Id? nextId);
     }
 }

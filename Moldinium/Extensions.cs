@@ -10,14 +10,14 @@ namespace IronStone.Moldinium
     {
         public static ILiveListSubscription Subscribe<T>(this ILiveList<T> source, ILiveListObserver<T> observer)
         {
-            return source.Subscribe((type, item, id, previousId) => observer.OnNext(type, item, id, previousId));
+            return source.Subscribe((type, item, id, previousId, nextId) => observer.OnNext(type, item, id, previousId, nextId));
         }
 
         public static IEnumerable<TSource> ToEnumerable<TSource>(this ILiveList<TSource> source)
         {
             var lst = new List<TSource>();
 
-            using (source.Subscribe((type, item, id, previousId) => lst.Add(item))) { }
+            using (source.Subscribe((type, item, id, previousId, nextId) => lst.Add(item))) { }
 
             return lst;
         }
@@ -43,9 +43,9 @@ namespace IronStone.Moldinium
             {
                 var keyToInfo = new Dictionary<Id, OrderByAnyInfo>();
 
-                Id? lastKey = null;
+                Id? lastId = null;
 
-                var subscription = source.Subscribe((type, item, id, ignoredPreviousKey) =>
+                var subscription = source.Subscribe((type, item, id, ignoredPreviousId, ignoredNextId) =>
                 {
                     OrderByAnyInfo info;
 
@@ -55,15 +55,15 @@ namespace IronStone.Moldinium
                     {
                         case ListEventType.Add:
                             if (found) throw new Exception("Id already added.");
-                            onNext(ListEventType.Add, item, id, lastKey);
+                            onNext(ListEventType.Add, item, id, lastId, null);
                             info.next = null;
-                            info.previous = lastKey;
+                            info.previous = lastId;
                             keyToInfo[id] = info;
-                            lastKey = id;
+                            lastId = id;
                             break;
                         case ListEventType.Remove:
                             if (!found) throw new Exception("Id not found.");
-                            onNext(ListEventType.Remove, item, id, info.previous);
+                            onNext(ListEventType.Remove, item, id, info.previous, info.next);
                             keyToInfo.Remove(id);
 
                             if (info.previous.HasValue)
@@ -87,10 +87,10 @@ namespace IronStone.Moldinium
                             }
                             else
                             {
-                                if (lastKey != id)
+                                if (lastId != id)
                                     throw new Exception("Only the last id should have no next id.");
 
-                                lastKey = info.previous;
+                                lastId = info.previous;
                             }
                             break;
                     }
@@ -98,6 +98,13 @@ namespace IronStone.Moldinium
 
                 return subscription;
             });
+        }
+
+        public static ILiveList<TSource> Reverse<TSource>(this ILiveList<TSource> source)
+        {
+            return LiveList.Create<TSource>(onNext =>
+                source.Subscribe((type, item, id, previousId, nextId) => onNext(type, item, id, nextId, previousId))
+            );
         }
     }
 }

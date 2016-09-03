@@ -59,13 +59,13 @@ namespace IronStone.Moldinium
             return new Subscription(this, observer);
         }
 
-        public void OnNext(ListEventType type, TSource item, Id id, Id? previousId)
+        public void OnNext(ListEventType type, TSource item, Id id, Id? previousId, Id? nextId)
         {
             foreach (var subscription in subscriptions)
             {
                 try
                 {
-                    subscription.observer(type, item, id, previousId);
+                    subscription.observer(type, item, id, previousId, nextId);
                 }
                 catch (Exception)
                 {

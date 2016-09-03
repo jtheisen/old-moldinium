@@ -26,7 +26,7 @@ namespace IronStone.Moldinium
             InternalExtensions.DisposeSafely(ref subscription);
         }
 
-        void OnNext(ListEventType type, T item, Id id, Id? previousId)
+        void OnNext(ListEventType type, T item, Id id, Id? previousId, Id? nextId)
         {
             var index = previousId.HasValue ? keys.IndexOf(previousId.Value) : -1;
 

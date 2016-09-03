@@ -185,7 +185,7 @@ namespace IronStone.Moldinium
             return list.Select(twk => twk.Thing).Subscribe(observer);
         }
 
-        void Handle(ListEventType type, TSource item, Id id, Id? previousId)
+        void Handle(ListEventType type, TSource item, Id id, Id? previousId, Id? nextId)
         {
             var twk = ThingWithKey.Create(item, id);
 
