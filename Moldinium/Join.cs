@@ -35,37 +35,38 @@ namespace IronStone.Moldinium
 
         ILiveListSubscription sourceSubscription;
 
-        Dictionary<TKey, Grouping> groupingsByGroupingKey;
+        Dictionary<TKey, WeakReference<Grouping>> groupingsByGroupingKey;
         Dictionary<Id, Grouping> groupings;
-        Id lastId;
-        Boolean haveElements;
+
+        Grouping first, last;
 
         Dictionary<Id, Info> infos;
 
         struct Info
         {
             public TKey key;
-            public Id? previousId;
+            public Id? previoudId;
+            public Id? nextId;
             public Id? previousIdInSameGroup;
+            public Id? nextIdInSameGroup;
             public TElement element;
         }
 
         class Grouping : AbstractLiveList<TElement>, ILiveListGrouping<TKey, TElement>
         {
-            public Id id;
-            public Id? previousId;
-
             public LiveLookup<TKey, TSource, TElement> container;
             public TKey key;
-            public TKey previousKey;
-            public TKey nextKey;
-            public Id lastId;
 
-            public Grouping(LiveLookup<TKey, TSource, TElement>  container, TKey key, TKey previousKey, TKey nextKey)
+            public Id? id;
+            public Grouping previous;
+            public Grouping next;
+            public Id? lastId;
+            public Id? firstId;
+
+            public Grouping(LiveLookup<TKey, TSource, TElement>  container, TKey key)
             {
                 this.container = container;
                 this.key = key;
-                this.nextKey = nextKey;
             }
 
             public TKey Key { get { return key; } }
@@ -77,20 +78,31 @@ namespace IronStone.Moldinium
 
             protected override void Bootstrap(DLiveListObserver<TElement> observer)
             {
-                Info info = container.infos[lastId];
-                Id id = lastId;
+                if (!firstId.HasValue) return;
+
+                Id? id = firstId;
 
                 do
                 {
-                    // FIXME wrong order!
-                    info = container.infos[id];
-                    observer(ListEventType.Add, info.element, lastId, info.previousIdInSameGroup);
+                    Info info = container.infos[id.Value];
+                    observer(ListEventType.Add, info.element, id.Value, info.previousIdInSameGroup, info.nextIdInSameGroup);
+                    id = info.nextIdInSameGroup;
                 }
-                while (info.previousIdInSameGroup.HasValue);
+                while (id.HasValue);
             }
         }
 
-        public ILiveList<TElement> this[TKey id] => groupingsByGroupingKey[id];
+        public ILiveList<TElement> this[TKey key] {
+            get {
+                Grouping grouping;
+                if (!groupingsByGroupingKey[key].TryGetTarget(out grouping))
+                {
+                    grouping = new Grouping(this, key);
+                    groupingsByGroupingKey[key] = new WeakReference<Grouping>(grouping);
+                }
+                return grouping;
+            }
+        }
 
         public LiveLookup(ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, IEqualityComparer<TKey> comparer)
         {
@@ -100,12 +112,17 @@ namespace IronStone.Moldinium
             this.sourceSubscription = source.Subscribe(Handle);
         }
 
-        void Handle(ListEventType type, TSource item, Id id, Id? previousId)
+
+        // FIXME: What about when the order of the groupings ought to change?
+        // FIXME: we really ought to translate the ids
+
+        void Handle(ListEventType type, TSource item, Id id, Id? previousId, Id? nextId)
         {
-            Info info;
+            Info info, info2;
 
             var found = infos.TryGetValue(id, out info);
 
+            WeakReference<Grouping> groupingReference;
             Grouping grouping;
 
             switch (type)
@@ -115,39 +132,101 @@ namespace IronStone.Moldinium
 
                     var key = info.key = keySelector(item);
                     var element = info.element = elementSelector(item);
-                    info.previousId = previousId;
+
+                    info.previoudId = previousId;
+                    info.nextId = nextId;
+
+                    info2 = info;
 
                     var previousIdCandidate = previousId;
-                    Info info2 = info;
-                    while (previousIdCandidate.HasValue && infos.TryGetValue(previousIdCandidate.Value, out info2) && !comparer.Equals(info2.key, key)) ;
+                    while (previousIdCandidate.HasValue && infos.TryGetValue(previousIdCandidate.Value, out info2) && !comparer.Equals(info2.key, key)) previousIdCandidate = info2.nextId;
                     var previousIdInSameGroup = info.previousIdInSameGroup = previousIdCandidate;
+
+                    var nextIdCandidate = nextId;
+                    while (nextIdCandidate.HasValue && infos.TryGetValue(nextIdCandidate.Value, out info2) && !comparer.Equals(info2.key, key)) nextIdCandidate = info2.previoudId;
+                    var nextIdInSameGroup = info.nextIdInSameGroup = nextIdCandidate;
 
                     infos[id] = info;
 
 
-                    if (!groupingsByGroupingKey.TryGetValue(key, out grouping))
+                    if (!groupingsByGroupingKey.TryGetValue(key, out groupingReference) || !groupingReference.TryGetTarget(out grouping))
                     {
-                        grouping = new Grouping(this, key, /* find previous key by working forward from key of previousId */, /* find next key analogously */);
-                        OnNext(ListEventType.Add, grouping, id, previousGrouping.id);
+                        grouping = new Grouping(this, key);
+                        groupingReference = new WeakReference<Grouping>(grouping);
+                        groupingsByGroupingKey[key] = groupingReference;
                     }
 
-                    // FIXME: we really ought to translate the ids
-                    grouping.OnNext(ListEventType.Add, element, id, previousIdInSameGroup);
+                    if (!grouping.id.HasValue)
+                    {
+                        // We have either just created the grouping or it's a grouping that was already in
+                        // the list at some point in the past and is now coming back.
+
+                        grouping.id = IdHelper.Create();
+                        grouping.firstId = ;
+                        grouping.lastId = ;
+                        grouping.next =;
+                        grouping.previous =;
+
+                        OnNext(ListEventType.Add, grouping, grouping.id.Value, grouping.previous?.id, grouping.next?.id);
+                    }
+
+                    grouping.OnNext(ListEventType.Add, element, id, previousIdInSameGroup, nextIdInSameGroup);
 
                     break;
                 case ListEventType.Remove:
                     Debug.Assert(found);
 
-                    grouping = groupingsByGroupingKey[info.key];
+                    groupingReference = groupingsByGroupingKey[info.key];
 
-                    // FIXME: maintain linked list in elements
-                    grouping.OnNext(ListEventType.Add, info.element, id, info.previousIdInSameGroup);
+                    if (!groupingReference.TryGetTarget(out grouping))
+                        throw new Exception("Could not find group in remove operation.");
+
+                    if (info.nextIdInSameGroup.HasValue)
+                    {
+                        // IMPROVEME: Use C#7 ref returns or use reference infos
+                        info2 = infos[info.nextIdInSameGroup.Value];
+                        info2.previousIdInSameGroup = info.previousIdInSameGroup;
+                        infos[info.nextIdInSameGroup.Value] = info2;
+                    }
+                    else
+                    {
+                        grouping.lastId = info.previousIdInSameGroup;
+                    }
+
+                    if (info.previousIdInSameGroup.HasValue)
+                    {
+                        // IMPROVEME: Use C#7 ref returns or use reference infos
+                        info2 = infos[info.previousIdInSameGroup.Value];
+                        info2.nextIdInSameGroup = info.nextIdInSameGroup;
+                        infos[info.nextIdInSameGroup.Value] = info2;
+                    }
+                    else
+                    {
+                        grouping.firstId = info.nextIdInSameGroup;
+                    }
+
+                    infos.Remove(id);
+
+                    grouping.OnNext(ListEventType.Remove, info.element, id, info.previousIdInSameGroup, info.nextIdInSameGroup);
 
                     if (grouping.Count == 0)
                     {
-                        // FIXME: maintain linked list in groupings
+                        if (grouping.previous != null)
+                            grouping.previous.next = grouping.next;
+                        else
+                            first = grouping.next;
+
+                        if (grouping.next != null)
+                            grouping.next.previous = grouping.previous;
+                        else
+                            last = grouping.previous;
+
+                        groupings.Remove(grouping.id.Value);
                         groupingsByGroupingKey.Remove(info.key);
-                        OnNext(ListEventType.Remove, grouping, grouping.id, grouping.previousId);
+
+                        OnNext(ListEventType.Remove, grouping, grouping.id.Value, grouping.previous.id, grouping.next.id);
+
+                        grouping.id = null;
                     }
 
                     break;
@@ -156,27 +235,21 @@ namespace IronStone.Moldinium
 
         protected override void Bootstrap(DLiveListObserver<ILiveListGrouping<TKey, TElement>> observer)
         {
-            if (!haveElements) return;
+            var grouping = first;
 
-            var id = lastId;
-
-            Grouping grouping;
-
-            do
+            while (grouping != null)
             {
-                // FIXME wrong order!
-                grouping = groupings[id];
-                observer(ListEventType.Add, grouping, grouping.id, grouping.previousId);
+                observer(ListEventType.Add, grouping, grouping.id.Value, grouping.previous.id, grouping.next.id);
+                grouping = grouping.next;
             }
-            while (grouping.previousId.HasValue);
         }
 
         protected override void Refresh(DLiveListObserver<ILiveListGrouping<TKey, TElement>> observer, Id id)
         {
             var grouping = groupings[id];
 
-            observer(ListEventType.Remove, grouping, grouping.id, grouping.previousId);
-            observer(ListEventType.Add, grouping, grouping.id, grouping.previousId);
+            observer(ListEventType.Remove, grouping, grouping.id.Value, grouping.previous?.id, grouping.next?.id);
+            observer(ListEventType.Add, grouping, grouping.id.Value, grouping.previous?.id, grouping.next?.id);
         }
 
         public void Dispose()
@@ -229,7 +302,7 @@ namespace IronStone.Moldinium
                     // FIXME
                 };
 
-                var outerSubscription = outerLookup.Subscribe((type, item, id, previousId) =>
+                var outerSubscription = outerLookup.Subscribe((type, item, id, previousId, nextId) =>
                 {
                     DoubleGroupByInfo<TKey, TOuter, TInner> group;
 
@@ -245,7 +318,7 @@ namespace IronStone.Moldinium
                                 group.outerSubject = new LiveListSubject<TOuter>();
                                 group.innerSubject = new LiveListSubject<TInner>();
 
-                                onNext(ListEventType.Add, group, group.id, null);
+                                onNext(ListEventType.Add, group, group.id, null, null);
                             }
 
                             group.outerSubscription = item.Subscribe(group.outerSubject);
@@ -256,12 +329,12 @@ namespace IronStone.Moldinium
                             InternalExtensions.DisposeSafely(ref group.outerSubscription);
 
                             if (group.outerSubscription == null && group.innerSubscription == null)
-                                onNext(ListEventType.Remove, group, group.id, null);
+                                onNext(ListEventType.Remove, group, group.id, null, null);
                             break;
                     }
                 });
 
-                var innerSubscription = innerLookup.Subscribe((type, item, id, previousId) =>
+                var innerSubscription = innerLookup.Subscribe((type, item, id, previousId, nextId) =>
                 {
                     DoubleGroupByInfo<TKey, TOuter, TInner> group;
 
@@ -277,7 +350,7 @@ namespace IronStone.Moldinium
                                 group.outerSubject = new LiveListSubject<TOuter>();
                                 group.innerSubject = new LiveListSubject<TInner>();
 
-                                onNext(ListEventType.Add, group, group.id, null);
+                                onNext(ListEventType.Add, group, group.id, null, null);
                             }
 
                             group.innerSubscription = item.Subscribe(group.innerSubject);
@@ -288,7 +361,7 @@ namespace IronStone.Moldinium
                             InternalExtensions.DisposeSafely(ref group.innerSubscription);
 
                             if (group.outerSubscription == null && group.innerSubscription == null)
-                                onNext(ListEventType.Remove, group, group.id, null);
+                                onNext(ListEventType.Remove, group, group.id, null, null);
                             break;
                     }
                 });
