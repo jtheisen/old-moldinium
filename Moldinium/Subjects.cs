@@ -30,7 +30,6 @@ namespace IronStone.Moldinium
         {
             public AbstractLiveList<TSource> container;
             public DLiveListObserver<TSource> observer;
-            public ILiveListSubscription subscription;
 
             public Subscription(AbstractLiveList<TSource> container, DLiveListObserver<TSource> observer)
             {
@@ -84,6 +83,8 @@ namespace IronStone.Moldinium
             }
         }
 
+        // FIXME: If AbstractLiveList makes it into the public API, either count has to go
+        // or it needs to be watchable.
         public Int32 Count { get; private set; }
     }
 }

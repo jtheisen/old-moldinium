@@ -44,14 +44,14 @@ namespace IronStone.Moldinium.UnitTests
             );
         }
 
-        [TestMethod]
-        public void Wheres()
-        {
-            TestList<Int32>(
-                e => e.Where(i => i % 2 == 0),
-                l => l.Where(i => i % 2 == 0),
-                GetSampleIntLists()
-                );
-        }
+        //[TestMethod]
+        //public void Wheres()
+        //{
+        //    TestList<Int32>(
+        //        e => e.Where(i => i % 2 == 0),
+        //        l => l.Where(i => i % 2 == 0),
+        //        GetSampleIntLists()
+        //        );
+        //}
     }
 }

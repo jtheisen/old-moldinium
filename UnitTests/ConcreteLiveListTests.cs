@@ -31,7 +31,7 @@ namespace IronStone.Moldinium.UnitTests
 
             // Should fire on mere subscription:
             int c = 0;
-            list.Subscribe((type, item, id, previousId) => ++c).Dispose();
+            list.Subscribe((type, item, id, previousId, nextId) => ++c).Dispose();
             Assert.AreEqual(1, c);
         }
     }

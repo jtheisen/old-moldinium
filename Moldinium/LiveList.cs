@@ -4,8 +4,6 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Linq;
-using System.Reactive.Disposables;
-using System.Reactive.Subjects;
 
 namespace IronStone.Moldinium
 {
@@ -23,7 +21,7 @@ namespace IronStone.Moldinium
     /// <seealso cref="System.Collections.Generic.IReadOnlyCollection{T}" />
     /// <seealso cref="System.Collections.Generic.IEnumerable{T}" />
     /// <seealso cref="System.Collections.IEnumerable" />
-    public class LiveList<T> : ILiveList<T>, INotifyCollectionChanged, IList<T>, ICollection<T>, ICollection, IReadOnlyList<T>, IReadOnlyCollection<T>, IEnumerable<T>, IEnumerable
+    public class LiveList<T> : AbstractLiveList<T>, ILiveList<T>, INotifyCollectionChanged, IList<T>, ICollection<T>, ICollection, IReadOnlyList<T>, IReadOnlyCollection<T>, IEnumerable<T>, IEnumerable
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="LiveList{T}"/> class that
@@ -68,7 +66,7 @@ namespace IronStone.Moldinium
         /// <summary>
         /// Gets the number of elements contained in the <see cref="System.Collections.Generic.ICollection{T}" />.
         /// </summary>
-        public Int32 Count { get { OnEvaluated(); return items.Count; } }
+        public new Int32 Count { get { OnEvaluated(); return items.Count; } }
 
         /// <summary>
         /// Adds an object to the end of the <see cref="System.Collections.Generic.ICollection{T}" />.
@@ -318,7 +316,7 @@ namespace IronStone.Moldinium
             var id = ids[index];
             items.RemoveAt(index);
             ids.RemoveAt(index);
-            events.OnNext(ListEvent.Make(ListEventType.Remove, removed, id, GetPreviousId(index), GetNextId(index)));
+            OnNext(ListEventType.Remove, removed, id, GetPreviousId(index), GetNextId(index));
             CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, removed, index));
         }
 
@@ -358,7 +356,7 @@ namespace IronStone.Moldinium
             var id = IdHelper.Create();
             items.Insert(index, item);
             ids.Insert(index, id);
-            events.OnNext(ListEvent.Make(ListEventType.Add, item, id, GetPreviousId(index), GetNextId(index)));
+            OnNext(ListEventType.Add, item, id, GetPreviousId(index), GetNextId(index));
             CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
         }
 
@@ -401,34 +399,6 @@ namespace IronStone.Moldinium
 
         protected virtual void OnEvaluated() { }
 
-        public ILiveListSubscription Subscribe(DLiveListObserver<T> onNext)
-        {
-            var count = items.Count;
-
-            for (var i = 0; i < count; ++i)
-                onNext(ListEventType.Add, items[i], ids[i], GetPreviousId(i), GetNextId(i));
-
-            Action<Id> handleRefreshRequest = id =>
-            {
-                var index = ids.IndexOf(id);
-
-                if (index < 0) throw new Exception("Item not found.");
-
-                var item = items[index];
-
-                var previousId = GetPreviousId(index);
-                var nextId = GetNextId(index);
-
-                onNext(ListEventType.Remove, item, id, previousId, nextId);
-                onNext(ListEventType.Add, item, id, previousId, nextId);
-            };
-
-            return LiveListSubscription.Create(
-                handleRefreshRequest,
-                events.Subscribe(v => onNext(v.Type, v.Item, v.Id, v.PreviousId, v.NextId))
-            );
-        }
-
         Boolean ICollection<T>.IsReadOnly { get { return true; } }
 
         Int32 ICollection.Count { get { return Count; } }
@@ -447,8 +417,30 @@ namespace IronStone.Moldinium
             (items as ICollection).CopyTo(array, index);
         }
 
+        protected override void Refresh(DLiveListObserver<T> observer, Id id)
+        {
+            // FIXME: this is linear amortized constant time, which can be avoided
+            var i = ids.IndexOf(id);
+            observer(ListEventType.Remove, items[i], id, GetPreviousId(i), GetNextId(i));
+        }
 
-        ISubject<ListEvent<T>> events = new Subject<ListEvent<T>>();
+        protected override void Bootstrap(DLiveListObserver<T> observer)
+        {
+            if (items.Count > 0)
+            {
+                observer(ListEventType.Add, items[0], ids[0], null, ids[1]);
+            }
+
+            for (int i = 1; i < items.Count - 1; ++i)
+            {
+                observer(ListEventType.Add, items[i], ids[i], ids[i - 1], ids[i + 1]);
+            }
+
+            if (items.Count > 1)
+            {
+                observer(ListEventType.Add, items[items.Count - 1], ids[items.Count - 1], ids[items.Count - 2], null);
+            }
+        }
 
         List<T> items;
         List<Id> ids;
