@@ -32,22 +32,22 @@ namespace IronStone.Moldinium
             return source;
         }
 
-        struct OrderByAnyInfo
+        struct OrderByInsertionInfo
         {
             public Id? next, previous;
         }
 
-        public static ILiveList<TSource> OrderByAny<TSource>(this ILiveList<TSource> source)
+        public static ILiveList<TSource> OrderByInsertion<TSource>(this ILiveList<TSource> source)
         {
             return LiveList.Create<TSource>(onNext =>
             {
-                var keyToInfo = new Dictionary<Id, OrderByAnyInfo>();
+                var keyToInfo = new Dictionary<Id, OrderByInsertionInfo>();
 
                 Id? lastId = null;
 
                 var subscription = source.Subscribe((type, item, id, ignoredPreviousId, ignoredNextId) =>
                 {
-                    OrderByAnyInfo info;
+                    OrderByInsertionInfo info;
 
                     var found = keyToInfo.TryGetValue(id, out info);
 
@@ -68,7 +68,7 @@ namespace IronStone.Moldinium
 
                             if (info.previous.HasValue)
                             {
-                                OrderByAnyInfo previousInfo;
+                                OrderByInsertionInfo previousInfo;
                                 if (!keyToInfo.TryGetValue(info.previous.Value, out previousInfo))
                                     throw new Exception("Previous id not found.");
 
@@ -78,7 +78,7 @@ namespace IronStone.Moldinium
 
                             if (info.next.HasValue)
                             {
-                                OrderByAnyInfo nextInfo;
+                                OrderByInsertionInfo nextInfo;
                                 if (!keyToInfo.TryGetValue(info.next.Value, out nextInfo))
                                     throw new Exception("Next id not found.");
 

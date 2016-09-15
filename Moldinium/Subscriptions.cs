@@ -34,7 +34,7 @@ namespace IronStone.Moldinium
         public override void Dispose()
         {
             for (int i = 0; i < disposables.Length; ++i)
-                InternalExtensions.DisposeSafely(ref disposables[i]);
+                InternalExtensions.DisposeProperly(ref disposables[i]);
         }
     }
 
@@ -66,7 +66,7 @@ namespace IronStone.Moldinium
 
         public override void Dispose()
         {
-            InternalExtensions.DisposeSafely(ref nestedSubscription);
+            InternalExtensions.DisposeProperly(ref nestedSubscription);
             base.Dispose();
         }
 

@@ -38,7 +38,7 @@ namespace IronStone.Moldinium
                 {
                     if (null == selfSubscription) throw new Exception(
                         "Unexpected state in ConcreteLiveList on collection change unsubscription.");
-                    InternalExtensions.DisposeSafely(ref selfSubscription);
+                    InternalExtensions.DisposeProperly(ref selfSubscription);
                     manifestation = null;
                 }
             }

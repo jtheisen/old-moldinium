@@ -23,7 +23,7 @@ namespace IronStone.Moldinium
 
         public void Dispose()
         {
-            InternalExtensions.DisposeSafely(ref subscription);
+            InternalExtensions.DisposeProperly(ref subscription);
         }
 
         void OnNext(ListEventType type, T item, Id id, Id? previousId, Id? nextId)

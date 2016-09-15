@@ -6,9 +6,10 @@ namespace IronStone.Moldinium
 {
     internal static class InternalExtensions
     {
-        public static Id? ApplyTo(this Id? source, IDictionary<Id, Id> dictionary)
+        public static TResult? ApplyTo<TResult>(this Id? source, IDictionary<Id, TResult> dictionary)
+            where TResult : struct
         {
-            return source.HasValue ? dictionary[source.Value] : (Id?)null;
+            return source.HasValue ? dictionary[source.Value] : (TResult?)null;
         }
 
         public static TResult ApplyTo<TSource, TResult>(this TSource source, IDictionary<TSource, TResult> dictionary)
@@ -16,7 +17,7 @@ namespace IronStone.Moldinium
             return dictionary[source];
         }
 
-        public static void DisposeSafely<TDisposable>(ref TDisposable disposable)
+        public static void DisposeProperly<TDisposable>(ref TDisposable disposable)
             where TDisposable : IDisposable
         {
             if (disposable == null) throw new Exception("Can't dispose null disposable.");

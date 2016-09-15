@@ -210,7 +210,7 @@ namespace IronStone.Moldinium
 
         public void Dispose()
         {
-            InternalExtensions.DisposeSafely(ref sourceSubscription);
+            InternalExtensions.DisposeProperly(ref sourceSubscription);
             for (int i = list.Count - 1; i >= 0; --i)
                 Remove(i);
         }
@@ -219,7 +219,7 @@ namespace IronStone.Moldinium
         {
             var removed = list[i];
             list.RemoveAt(i);
-            InternalExtensions.DisposeSafely(ref removed.Subscriptions);
+            InternalExtensions.DisposeProperly(ref removed.Subscriptions);
         }
     }
 

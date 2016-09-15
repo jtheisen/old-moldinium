@@ -118,7 +118,7 @@ namespace IronStone.Moldinium
                         case ListEventType.Remove:
                             var oldAttachment = outerAttachments[id];
 
-                            InternalExtensions.DisposeSafely(ref oldAttachment.subscription);
+                            InternalExtensions.DisposeProperly(ref oldAttachment.subscription);
 
                             outerAttachments.Remove(id);
                             break;
