@@ -32,9 +32,6 @@ namespace IronStone.Moldinium
             public Grouping previousGrouping;
             public Grouping nextGrouping;
 
-            public Run firstRun;
-            public Run lastRun;
-
             public Grouping(LiveLookup<TKey, TElement, TSource> parent, TKey key)
             {
                 this.parent = parent;
@@ -54,25 +51,17 @@ namespace IronStone.Moldinium
             }
         }
 
-        class Run
+        struct Node
         {
             public Grouping grouping;
 
-            public Run previousRun;
-            public Run nextRun;
-
-            public Id firstId;
-            public Id lastId;
-        }
-
-        struct Node
-        {
-            public Run run;
-
             public TElement element;
 
-            public Id? previousIdInRun;
-            public Id? nextIdInRun;
+            public Id? previousId;
+            public Id? nextId;
+
+            public Id? previousIdInGrouping;
+            public Id? nextIdInGrouping;
         }
 
         public LiveLookup(ILiveList<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TElement> elementSelector, IEqualityComparer<TKey> comparer)
@@ -90,75 +79,77 @@ namespace IronStone.Moldinium
         {
             Node node;
 
+            var key = keySelector(item);
+            var grouping = node.grouping = GetGrouping(key);
+
             switch (type)
             {
                 case ListEventType.Add:
-                    var key = keySelector(item);
-                    var element = elementSelector(item);
                     var nodeOfPrevious = previousId.ApplyTo(nodes);
                     var nodeOfNext = nextId.ApplyTo(nodes);
 
-                    var runOfPrevious = nodeOfPrevious?.run;
-                    var runOfNext = nodeOfNext?.run;
+                    var groupingOfPrevious = nodeOfPrevious?.grouping;
+                    var groupingOfNext = nodeOfNext?.grouping;
 
-                    var groupingOfPrevious = runOfPrevious?.grouping;
-                    var groupingOfNext = runOfNext?.grouping;
+                    var element = node.element = elementSelector(item);
 
-                    node.element = element;
+                    node.previousId = previousId;
+                    node.nextId = nextId;
 
-                    if (groupingOfPrevious != null && comparer.Equals(key, groupingOfPrevious.key))
+                    var previousInSameGroupCandidateId = previousId;
+                    Node previousInSameGroupNodeCandidate;
+                    while (previousInSameGroupCandidateId.HasValue)
                     {
-                        // We are at least in the run of the previous.
-
-                        if (runOfPrevious == runOfNext)
-                        {
-                            // We insert into the middle of a run.
-
-                            node.previousIdInRun = previousId;
-
-                            groupingOfPrevious.OnNext(ListEventType.Add, element, id, previousId, nextId);
-                        }
-                        else
-                        {
-                            // We append to the run of the previous.
-
-                            node.run = runOfPrevious;
-                            node.previousIdInRun = runOfPrevious.lastId;
-                            node.nextIdInRun = null;
-                            nodes[id] = node;
-
-                            var previousRunLastNode = nodes[runOfPrevious.lastId];
-                            previousRunLastNode.nextIdInRun = id;
-                            runOfPrevious.lastId = id;
-
-                            groupingOfPrevious.OnNext(ListEventType.Add, element, id, previousId, runOfPrevious.nextRun?.firstId);
-                        }
+                        previousInSameGroupNodeCandidate = nodes[previousInSameGroupCandidateId.Value];
+                        if (previousInSameGroupNodeCandidate.grouping == grouping) break;
+                        previousInSameGroupCandidateId = previousInSameGroupNodeCandidate.previousId;
                     }
-                    else if (runOfPrevious == runOfNext)
+                    node.previousIdInGrouping = previousInSameGroupCandidateId;
+
+                    var nextInSameGroupCandidateId = nextId;
+                    Node nextInSameGroupNodeCandidate;
+                    while (nextInSameGroupCandidateId.HasValue)
                     {
-                        // We now know we can't possibly be in either run, so we don't have to
-                        // evaluate comparer.Equals a second time. We're splitting a run.
-
-                        var run = node.run = new Run();
-                        run.firstId = run.lastId = id;
-
-                        var grouping = run.grouping = GetGrouping(key);
-
-
+                        nextInSameGroupNodeCandidate = nodes[nextInSameGroupCandidateId.Value];
+                        if (nextInSameGroupNodeCandidate.grouping == grouping) break;
+                        nextInSameGroupCandidateId = nextInSameGroupNodeCandidate.nextId;
                     }
-                    else if (groupingOfNext != null && comparer.Equals(key, groupingOfNext.key))
+                    node.nextIdInGrouping = nextInSameGroupCandidateId;
+
+                    nodes[id] = node;
+
+                    if (grouping.Count == 0)
                     {
-                        // We needed to check and now need to prepend to the run of the next.
+                        var groupingId = IdHelper.Create();
 
+                        grouping.id = groupingId;
+                        var previousGrouping = grouping.previousGrouping = groupingOfPrevious;
+                        var nextGrouping = grouping.nextGrouping = groupingOfPrevious.nextGrouping;
+                        previousGrouping.nextGrouping = grouping;
+                        nextGrouping.previousGrouping = grouping;
+ 
+                        OnNext(ListEventType.Add, grouping, groupingId, previousGrouping.id, nextGrouping.id);
                     }
-                    else
-                    {
-                        // We are inserting a new run between two others.
 
-                    }
+                    grouping.OnNext(ListEventType.Add, element, id, previousInSameGroupCandidateId, nextInSameGroupCandidateId);
 
                     break;
                 case ListEventType.Remove:
+
+                    node = nodes[id];
+
+                    grouping.OnNext(ListEventType.Remove, node.element, id, node.previousIdInGrouping, node.nextIdInGrouping);
+
+                    nodes.Remove(id);
+
+                    if (grouping.Count == 0)
+                    {
+                        OnNext(ListEventType.Remove, grouping, grouping.id, grouping.previousGrouping.id, grouping.nextGrouping.id);
+
+                        grouping.id = default(Id);
+                        grouping.previousGrouping = grouping.nextGrouping = null;
+                    }
+
                     break;
             }
         }
