@@ -1,17 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Reactive;
 using System.Reactive.Disposables;
-using System.Reactive.Subjects;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace IronStone.Moldinium
 {
     public interface ILiveIndex<out TSource> : ILiveList<TSource>, IDisposable
     {
+        ILiveListSubscription Subscribe(DLiveListObserver<TSource> observer, Func<Int32> skip, Func<Int32> take);
     }
 
     public static class ThingWithKey
@@ -107,10 +104,41 @@ namespace IronStone.Moldinium
         }
     }
 
+    public interface IIndexedLiveList<TSource> : ILiveList<TSource>
+    {
+        ILiveListSubscription Subscribe(DLiveListObserver<TSource> observer, Func<Int32> skip, Func<Int32> take);
+    }
 
-    public interface IOrderedLiveList<TSource> : ILiveList<TSource>
+    public interface IOrderedLiveList<TSource> : IIndexedLiveList<TSource>
     {
         ILiveIndex<TSource> MakeIndex(AbstractComparerEvaluator<TSource> evaluator);
+    }
+
+    internal class IndexedLiveList<TSource> : IIndexedLiveList<TSource>
+    {
+        static Func<Int32> DefaultSkip = () => 0;
+        static Func<Int32> DefaultTake = () => Int32.MaxValue;
+
+        IIndexedLiveList<TSource> source;
+        Func<Int32> skip;
+        Func<Int32> take;
+
+        public IndexedLiveList(IIndexedLiveList<TSource> source, Func<Int32> skip, Func<Int32> take)
+        {
+            this.source = source;
+            this.skip = skip ?? DefaultSkip;
+            this.take = take ?? DefaultTake;
+        }
+
+        public ILiveListSubscription Subscribe(DLiveListObserver<TSource> observer)
+        {
+            return this.Subscribe(observer, null, null);
+        }
+
+        public ILiveListSubscription Subscribe(DLiveListObserver<TSource> observer, Func<Int32> skip, Func<Int32> take)
+        {
+            return source.Subscribe(observer, () => (skip ?? DefaultSkip)() + this.skip(), () => Math.Min((take ?? DefaultTake)(), this.take()));
+        }
     }
 
     internal abstract class AbstractOrderedLiveList<TSource> : IOrderedLiveList<TSource>
@@ -119,10 +147,15 @@ namespace IronStone.Moldinium
 
         public ILiveListSubscription Subscribe(DLiveListObserver<TSource> observer)
         {
+            return this.Subscribe(observer, null, null);
+        }
+
+        public ILiveListSubscription Subscribe(DLiveListObserver<TSource> observer, Func<Int32> skip, Func<Int32> take)
+        {
             var index = MakeIndex();
 
             return LiveListSubscription.Create(
-                index.Subscribe(observer),
+                index.Subscribe(observer, skip, take),
                 index);
         }
     }
@@ -159,6 +192,13 @@ namespace IronStone.Moldinium
         }
     }
 
+
+    // TODO: LiveIndex should manage its subscriptions and each subscription should have
+    // two cursors to mark where the subscription's sublist ends
+
+    // There should be two standard cursors: beginning and end, and then cursors that
+    // are built relative to existing ones.
+
     internal class LiveIndex<TSource> : ILiveIndex<TSource>
     {
         AbstractComparerEvaluator<TSource> evaluator;
@@ -169,7 +209,124 @@ namespace IronStone.Moldinium
 
         ILiveListSubscription sourceSubscription;
 
-        LiveList<ThingWithKey<TSource>> list = new LiveList<ThingWithKey<TSource>>();
+        HashSet<Subscription> subscriptions;
+
+        List<ThingWithKey<TSource>> list = new List<ThingWithKey<TSource>>();
+
+        class Subscription : ILiveListSubscription
+        {
+            public LiveIndex<TSource> container;
+            public DLiveListObserver<TSource> observer;
+            public List<ThingWithKey<TSource>> list;
+
+            public Func<Int32> skipSelector;
+            public Func<Int32> takeSelector;
+
+            SerialDisposable skipSubscription = null;
+            SerialDisposable takeSubscription = null;
+
+            Int32 skip;
+            Int32 take;
+
+            public Subscription(LiveIndex<TSource> container, DLiveListObserver<TSource> observer, Func<Int32> skipSelector, Func<Int32> takeSelector)
+            {
+                this.container = container;
+                this.observer = observer;
+                this.list = container.list;
+                this.skipSelector = skipSelector;
+                this.takeSelector = takeSelector;
+
+                container.subscriptions.Add(this);
+            }
+
+            void Foo()
+            {
+                var newSkip = Repository.Instance.EvaluateAndSubscribe(ref skipSubscription, skipSelector, Foo);
+
+                var skipDiff = newSkip - skip;
+
+                var absSkipDiff = Math.Abs(skipDiff);
+
+                if (skipDiff == 0)
+                {
+                    // nothing to do
+                }
+                else if (absSkipDiff > take)
+                {
+                    ForEachForwards(ListEventType.Remove, skip, skip + take - 1, true, true);
+                    ForEachForwards(ListEventType.Remove, newSkip, skip + take - 1, true, true);
+                }
+                else if (skipDiff == 1)
+                {
+                    ForOne(ListEventType.Remove, skip, true, false);
+                    ForOne(ListEventType.Add, skip + take, false, true);
+                }
+                else if (skipDiff == -1)
+                {
+                    ForOne(ListEventType.Remove, skip + take - 1, false, true);
+                    ForOne(ListEventType.Add, skip - 1, true, false);
+                }
+                else if (skipDiff > 1)
+                {
+                    ForEachForwards(ListEventType.Remove, skip, newSkip - 1, true, false);
+                    ForEachForwards(ListEventType.Add, skip + take, newSkip + take - 1, false, true);
+                }
+                else // skipDiff < -1
+                {
+                    ForEachBackwards(ListEventType.Remove, skip + take - 1, newSkip + take, false, true);
+                    ForEachBackwards(ListEventType.Add, skip - 1, newSkip, true, false);
+                }
+
+                skip = newSkip;
+            }
+
+            void Bar()
+            {
+                var newTake = Repository.Instance.EvaluateAndSubscribe(ref takeSubscription, takeSelector, Bar);
+
+                if (newTake > take)
+                {
+                    
+                }
+                else
+                {
+
+                }
+            }
+
+            void ForEachForwards(ListEventType type, Int32 from, Int32 to, Boolean leftEdge, Boolean rightEdge)
+            {
+                ForOne(type, from, leftEdge, false);
+                for (int i = from + 1; i <= to - 1; ++i)
+                    ForOne(type, i, false, false);
+                ForOne(type, to, false, rightEdge);
+            }
+
+            void ForEachBackwards(ListEventType type, Int32 from, Int32 to, Boolean leftEdge, Boolean rightEdge)
+            {
+                ForOne(type, from, rightEdge, false);
+                for (int i = from - 1; i >= to + 1; --i)
+                    ForOne(type, i, false, false);
+                ForOne(type, to, false, leftEdge);
+            }
+
+            void ForOne(ListEventType type, Int32 i, Boolean leftEdge, Boolean rightEdge)
+            {
+                observer(type, list[i].Thing, list[i].Id, leftEdge ? (Id?)null : list[i - 1].Id, rightEdge ? (Id?)null : list[i + 1].Id);
+            }
+
+            public void Dispose()
+            {
+                container.subscriptions.Remove(this);
+            }
+
+            public void Refresh(Id id)
+            {
+                container.Refresh(observer, id);
+            }
+        }
+
+        Id? GetId(Int32 i) => i > list.Count ? (Id?)null : list[i].Id;
 
         internal LiveIndex(ILiveList<TSource> source, AbstractComparerEvaluator<TSource> evaluator)
         {
@@ -181,8 +338,14 @@ namespace IronStone.Moldinium
 
         public ILiveListSubscription Subscribe(DLiveListObserver<TSource> observer)
         {
-            // FIXME: A refresh request will now refresh all subscribers, as they share the live list.
-            return list.Select(twk => twk.Thing).Subscribe(observer);
+            return new Subscription(this, observer, null, null);
+        }
+
+        public ILiveListSubscription Subscribe(DLiveListObserver<TSource> observer, Func<Int32> skip, Func<Int32> take)
+        {
+            var subscrption = new Subscription(this, observer, skip, take);
+            subscriptions.Add(subscrption);
+            return subscrption;
         }
 
         void Handle(ListEventType type, TSource item, Id id, Id? previousId, Id? nextId)
@@ -272,6 +435,16 @@ namespace IronStone.Moldinium
         {
             return new NestedOrderedLiveList<TSource>(source, evaluator =>
                 new NestedComparerEvaluator<TSource, TKey>(keySelector, comparer ?? Comparer<TKey>.Default, -1, evaluator));
+        }
+
+        public static IIndexedLiveList<TSource> Take<TSource>(this IIndexedLiveList<TSource> source, Func<Int32> take)
+        {
+            return new IndexedLiveList<TSource>(source, null, take);
+        }
+
+        public static IIndexedLiveList<TSource> Skip<TSource>(this IIndexedLiveList<TSource> source, Func<Int32> skip)
+        {
+            return new IndexedLiveList<TSource>(source, skip, null);
         }
     }
 }
