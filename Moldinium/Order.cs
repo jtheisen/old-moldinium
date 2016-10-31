@@ -11,22 +11,22 @@ namespace IronStone.Moldinium
         ILiveListSubscription Subscribe(DLiveListObserver<TSource> observer, Func<Int32> skip, Func<Int32> take);
     }
 
-    public static class ThingWithKey
+    public static class ThingWithId
     {
-        public static ThingWithKey<TSource> Create<TSource>(TSource thing, Id id)
+        public static ThingWithId<TSource> Create<TSource>(TSource thing, Id id)
         {
-            return new ThingWithKey<TSource>(thing, id);
+            return new ThingWithId<TSource>(thing, id);
         }
     }
 
     [DebuggerDisplay("{Id}: {Thing}")]
-    public struct ThingWithKey<TSource>
+    public struct ThingWithId<TSource>
     {
         public readonly TSource Thing;
         public readonly Id Id;
         public SerialDisposable Subscriptions;
 
-        public ThingWithKey(TSource thing, Id id)
+        public ThingWithId(TSource thing, Id id)
         {
             this.Thing = thing;
             this.Id = id;
@@ -34,14 +34,14 @@ namespace IronStone.Moldinium
         }
     }
 
-    public abstract class AbstractComparerEvaluator<TSource> : IComparer<ThingWithKey<TSource>>
+    public abstract class AbstractComparerEvaluator<TSource> : IComparer<ThingWithId<TSource>>
     {
         public abstract void SetLhs(TSource value);
         public abstract void SetRhs(TSource value);
 
         public abstract Int32 Compare();
 
-        public int Compare(ThingWithKey<TSource> lhs, ThingWithKey<TSource> rhs)
+        public int Compare(ThingWithId<TSource> lhs, ThingWithId<TSource> rhs)
         {
             SetLhs(lhs.Thing);
             SetRhs(rhs.Thing);
@@ -211,13 +211,15 @@ namespace IronStone.Moldinium
 
         HashSet<Subscription> subscriptions;
 
-        List<ThingWithKey<TSource>> list = new List<ThingWithKey<TSource>>();
+        List<ThingWithId<TSource>> list = new List<ThingWithId<TSource>>();
+
+
 
         class Subscription : ILiveListSubscription
         {
             public LiveIndex<TSource> container;
             public DLiveListObserver<TSource> observer;
-            public List<ThingWithKey<TSource>> list;
+            public List<ThingWithId<TSource>> list;
 
             public Func<Int32> skipSelector;
             public Func<Int32> takeSelector;
@@ -239,9 +241,9 @@ namespace IronStone.Moldinium
                 container.subscriptions.Add(this);
             }
 
-            void Foo()
+            void UpdateSkip()
             {
-                var newSkip = Repository.Instance.EvaluateAndSubscribe(ref skipSubscription, skipSelector, Foo);
+                var newSkip = Repository.Instance.EvaluateAndSubscribe(ref skipSubscription, skipSelector, UpdateSkip);
 
                 var skipDiff = newSkip - skip;
 
@@ -253,25 +255,17 @@ namespace IronStone.Moldinium
                 }
                 else if (absSkipDiff > take)
                 {
-                    ForEachForwards(ListEventType.Remove, skip, skip + take - 1, true, true);
-                    ForEachForwards(ListEventType.Remove, newSkip, skip + take - 1, true, true);
+                    ForEachForwards(ListEventType.Remove, skip, skip + take - 2, true, false);
+                    ForOne(ListEventType.Remove, skip + take - 1, true, true);
+                    ForOne(ListEventType.Add, newSkip, true, true);
+                    ForEachForwards(ListEventType.Remove, newSkip + 1, skip + take - 1, false, true);
                 }
-                else if (skipDiff == 1)
-                {
-                    ForOne(ListEventType.Remove, skip, true, false);
-                    ForOne(ListEventType.Add, skip + take, false, true);
-                }
-                else if (skipDiff == -1)
-                {
-                    ForOne(ListEventType.Remove, skip + take - 1, false, true);
-                    ForOne(ListEventType.Add, skip - 1, true, false);
-                }
-                else if (skipDiff > 1)
+                else if (skipDiff > 0)
                 {
                     ForEachForwards(ListEventType.Remove, skip, newSkip - 1, true, false);
                     ForEachForwards(ListEventType.Add, skip + take, newSkip + take - 1, false, true);
                 }
-                else // skipDiff < -1
+                else // skipDiff < 0
                 {
                     ForEachBackwards(ListEventType.Remove, skip + take - 1, newSkip + take, false, true);
                     ForEachBackwards(ListEventType.Add, skip - 1, newSkip, true, false);
@@ -280,34 +274,32 @@ namespace IronStone.Moldinium
                 skip = newSkip;
             }
 
-            void Bar()
+            void UpdateBar()
             {
-                var newTake = Repository.Instance.EvaluateAndSubscribe(ref takeSubscription, takeSelector, Bar);
+                var newTake = Repository.Instance.EvaluateAndSubscribe(ref takeSubscription, takeSelector, UpdateBar);
 
                 if (newTake > take)
                 {
-                    
+                    ForEachForwards(ListEventType.Add, skip + take, skip + newTake - 1, false, true);
                 }
                 else
                 {
-
+                    ForEachBackwards(ListEventType.Remove, skip + take - 1, skip + newTake, false, true);
                 }
+
+                take = newTake;
             }
 
             void ForEachForwards(ListEventType type, Int32 from, Int32 to, Boolean leftEdge, Boolean rightEdge)
             {
-                ForOne(type, from, leftEdge, false);
-                for (int i = from + 1; i <= to - 1; ++i)
-                    ForOne(type, i, false, false);
-                ForOne(type, to, false, rightEdge);
+                for (int i = from; i <= to; ++i)
+                    ForOne(type, i, leftEdge, rightEdge);
             }
 
             void ForEachBackwards(ListEventType type, Int32 from, Int32 to, Boolean leftEdge, Boolean rightEdge)
             {
-                ForOne(type, from, rightEdge, false);
-                for (int i = from - 1; i >= to + 1; --i)
-                    ForOne(type, i, false, false);
-                ForOne(type, to, false, leftEdge);
+                for (int i = from; i >= to; --i)
+                    ForOne(type, i, leftEdge, rightEdge);
             }
 
             void ForOne(ListEventType type, Int32 i, Boolean leftEdge, Boolean rightEdge)
@@ -322,11 +314,11 @@ namespace IronStone.Moldinium
 
             public void Refresh(Id id)
             {
-                container.Refresh(observer, id);
+                
+
+                //ForOne(ListEventType.Remove, )
             }
         }
-
-        Id? GetId(Int32 i) => i > list.Count ? (Id?)null : list[i].Id;
 
         internal LiveIndex(ILiveList<TSource> source, AbstractComparerEvaluator<TSource> evaluator)
         {
@@ -350,7 +342,7 @@ namespace IronStone.Moldinium
 
         void Handle(ListEventType type, TSource item, Id id, Id? previousId, Id? nextId)
         {
-            var twk = ThingWithKey.Create(item, id);
+            var twi = ThingWithId.Create(item, id);
 
             // I used to do binary search on both types, but obviously we can't yet work like this: Any id whiches sort item changed
             // is in the wrong place. We should search for it using the old id, but so far we don't keep track of that.
@@ -358,13 +350,13 @@ namespace IronStone.Moldinium
             switch (type)
             {
                 case ListEventType.Add:
-                    var insertionIndex = list.BinarySearch(twk, evaluator);
+                    var insertionIndex = list.BinarySearch(twi, evaluator);
                     if (insertionIndex >= 0) throw new Exception("Item was already inserted.");
-                    Repository.Instance.EvaluateAndSubscribe(ref twk.Subscriptions, evaluationSelector, handleOnChange, item, id);
-                    list.Insert(~insertionIndex, twk);
+                    Repository.Instance.EvaluateAndSubscribe(ref twi.Subscriptions, evaluationSelector, handleOnChange, item, id);
+                    list.Insert(~insertionIndex, twi);
                     break;
                 case ListEventType.Remove:
-                    var removalIndex = list.FindIndex(twk2 => evaluator.Compare(twk, twk2) == 0);
+                    var removalIndex = list.FindIndex(twk2 => evaluator.Compare(twi, twk2) == 0);
                     if (removalIndex < 0) throw new Exception("Item had not been inserted.");
                     Remove(removalIndex);
                     break;
