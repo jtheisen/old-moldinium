@@ -49,8 +49,11 @@ If you ever wrote some more complex UI where you find yourself sprinkling `Updat
 calls in random places as you've lost sight of what excatly needs to be updated when
 what other variable changes, you will have thought that there has to be a better way.
 
-Javascript had a better way for a long time as part of the famous Knockout framwork,
-but the technique can be used in any language.
+Javascript had a better way for a long time as part of the famous [Knockout framwork](http://knockoutjs.com/),
+but the technique can be used in any language. If you're interested in the details,
+[this article on the Knockout site] (http://knockoutjs.com/documentation/computed-dependency-tracking.html)
+explains the idea well, although mind that there are also some design differences (eg. Moldinium's watchable
+evaluations are lazy, Knockout's computed observables are eager).
 
 How do I get started?
 =====================
