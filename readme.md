@@ -3,7 +3,7 @@ Moldinium
 
 Knockout-style dependency tracking for .NET.
 
-Also help with implementing `INotifyPropertyChanged`.
+Also helps with implementing `INotifyPropertyChanged`.
 
 Appveyor build status: ![build-status](https://ci.appveyor.com/api/projects/status/8jwforcs6u0gaw2d?svg=true)
 

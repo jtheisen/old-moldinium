@@ -2,7 +2,7 @@
 <package>
   <metadata>
     <id>IronStone.Moldinium</id>
-    <version>1.0.0</version>
+    <version>1.0.1-rc1</version>
     <title>Moldinium</title>
     <dependencies>
       <dependency id="Castle.Core" version="3.3.3" />
