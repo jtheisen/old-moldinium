@@ -207,14 +207,14 @@ namespace IronStone.Moldinium
         }
     }
 
-    interface IWatchablesLoggger
+    interface IWatchablesLogger
     {
         void BeginEvalutionFrame(Object evaluator);
         void CloseEvaluationFrameWithResult(Object result, IEnumerable<IWatchable> dependencies);
         void CloseEvaulationFrameWithException(Exception ex);
     }
 
-    class WatchablesLogger : IWatchablesLoggger
+    class WatchablesLogger : IWatchablesLogger
     {
         Stack<Object> evaluators = new Stack<Object>();
 
@@ -250,7 +250,7 @@ namespace IronStone.Moldinium
 
         static Lazy<Repository> instance = new Lazy<Repository>(() => new Repository());
 
-        IWatchablesLoggger logger = new WatchablesLogger();
+        IWatchablesLogger logger = null;
 
         Repository()
         {
@@ -266,7 +266,7 @@ namespace IronStone.Moldinium
 
         TSource Evaluate<TSource>(Object evaluator, Func<TSource> evaluation, out IEnumerable<IWatchable> dependencies)
         {
-            logger.BeginEvalutionFrame(evaluator);
+            logger?.BeginEvalutionFrame(evaluator);
 
             evaluationStack.Push(new EvaluationRecord());
 
@@ -276,7 +276,7 @@ namespace IronStone.Moldinium
 
                 dependencies = evaluationStack.Pop().evaluatedWatchables;
 
-                logger.CloseEvaluationFrameWithResult(result, dependencies);
+                logger?.CloseEvaluationFrameWithResult(result, dependencies);
 
                 return result;
             }
@@ -284,7 +284,7 @@ namespace IronStone.Moldinium
             {
                 dependencies = evaluationStack.Pop().evaluatedWatchables;
 
-                logger.CloseEvaulationFrameWithException(ex);
+                logger?.CloseEvaulationFrameWithException(ex);
 
                 throw;
             }
@@ -292,7 +292,7 @@ namespace IronStone.Moldinium
 
         TSource Evaluate<TSource, TContext>(Object evaluator, Func<TContext, TSource> evaluation, TContext context, out IEnumerable<IWatchable> dependencies)
         {
-            logger.BeginEvalutionFrame(evaluator);
+            logger?.BeginEvalutionFrame(evaluator);
 
             evaluationStack.Push(new EvaluationRecord());
 
@@ -302,7 +302,7 @@ namespace IronStone.Moldinium
 
                 dependencies = evaluationStack.Pop().evaluatedWatchables;
 
-                logger.CloseEvaluationFrameWithResult(result, dependencies);
+                logger?.CloseEvaluationFrameWithResult(result, dependencies);
 
                 return result;
             }
@@ -310,7 +310,7 @@ namespace IronStone.Moldinium
             {
                 evaluationStack.Pop();
 
-                logger.CloseEvaulationFrameWithException(ex);
+                logger?.CloseEvaulationFrameWithException(ex);
 
                 throw;
             }

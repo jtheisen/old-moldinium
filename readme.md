@@ -30,7 +30,7 @@ public abstract class Room : IModel
 And you get the following without any additional code:
 
 - An implementation of `INotifyPropertyChanged` for all properties declared abstract or virtual.
-- The property `Course.Description` will automaticall update on a change to either `Course.Room` or `Course.Location.Name`.
+- The property `Course.Description` will automatically update on a change to either `Course.Room` or `Course.Location.Name`.
 
 The first point is realized by runtime code-generation that creates derived types from
 your classes - which are thus called archetypes in this context. The derived type then
