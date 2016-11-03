@@ -1,48 +1,112 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Linq;
-using System.Reactive;
-using System.Reactive.Disposables;
-using System.Reactive.Subjects;
 
 namespace IronStone.Moldinium
 {
+    interface IWatchSubscription : IDisposable
+    {
+        IEnumerable<IWatchable> Dependencies { get; }
+    }
+
     interface IWatchable
     {
-        IObservable<Unit> Changed { get; }
+        IWatchSubscription Subscribe(Action watcher);
     }
 
-    interface IWatchable<Type> : IWatchable
+    interface IWatchableValue : IWatchable
     {
-        Type Value { get; }
+        Object UntypedValue { get; }
+
+        Type Type { get; }
     }
 
-    abstract class WatchableVariable : IWatchable
+    interface IWatchable<out T> : IWatchableValue
     {
-        public abstract Object UntypedValue { get; set; }
+        T Value { get; }
+    }
 
-        public abstract IObservable<Unit> Changed { get; }
+    interface IWatchableVariable : IWatchable
+    {
+        Object UntypedValue { get; set; }
+    }
 
-        public static WatchableVariable Create(Type type)
+    interface IWatchableVariable<T> : IWatchable<T>
+    {
+        new T Value { get; set; }
+    }
+
+    class ConcreteWatchable : IWatchable
+    {
+        Action watchers;
+
+        internal String Name { get; set; }
+
+        public IWatchSubscription Subscribe(Action watcher)
         {
-            return (WatchableVariable)Activator.CreateInstance(
-                typeof(WatchableVariable<>).MakeGenericType(type));
+            watchers += watcher;
+
+            return WatchSubscription.Create(this, () => watchers -= watcher);
+        }
+
+        public void Notify()
+        {
+            watchers?.Invoke();
+        }
+
+        public override string ToString()
+        {
+            return Name;
         }
     }
 
-    class WatchableVariable<Type> : WatchableVariable, IWatchable<Type>
+    abstract class WatchableValueBase : ConcreteWatchable, IWatchableValue
     {
+        public abstract Type Type { get; }
+
+        Object IWatchableValue.UntypedValue
+            => GetUntypedValue();
+
+        Type IWatchableValue.Type => Type;
+
+        protected abstract Object GetUntypedValue();
+    }
+
+    abstract class WatchableVariable : WatchableValueBase, IWatchableVariable
+    {
+        public Object UntypedValue
+        {
+            get
+            {
+                return GetUntypedValue();
+            }
+
+            set
+            {
+                SetUntypedValue(value);
+            }
+        }
+
+        protected abstract void SetUntypedValue(Object value);
+    }
+
+    class WatchableVariable<T> : WatchableVariable, IWatchableVariable<T>
+    {
+        T value;
+
         public WatchableVariable()
         {
-            value = default(Type);
+            this.value = default(T);
         }
 
-        public WatchableVariable(Type def)
+        public WatchableVariable(T def)
         {
-            value = def;
+            this.value = def;
         }
 
-        public Type Value
+        public T Value
         {
             get
             {
@@ -54,73 +118,49 @@ namespace IronStone.Moldinium
             {
                 this.value = value;
 
-                changed.OnNext(Unit.Default);
+                Notify();
             }
         }
 
-        public override IObservable<Unit> Changed {  get { return changed; } }
+        protected override Object GetUntypedValue() => Value;
+        protected override void SetUntypedValue(Object value) => Value = (T)value;
 
-        public override object UntypedValue
-        {
-            get
-            {
-                return Value;
-            }
-
-            set
-            {
-                Value = (Type)value;
-            }
-        }
-
-        Subject<Unit> changed = new Subject<Unit>();
-
-        Type value;
+        public override Type Type => typeof(T);
     }
 
-    class Watcher : IDisposable
+    /// <summary>
+    /// Encapsulates an exception encountered on a previous evaluation that is now rethrown on a repeated get operation.
+    /// </summary>
+    /// <seealso cref="System.Exception" />
+    public class RethrowException : Exception
     {
-        public Watcher(Action action)
+        internal RethrowException(Exception innerException)
+            : base("The value evaluation threw the inner exception last time it was attempted, and the dependencies didn't change since.", innerException)
         {
-            changed.Subscribe(Evaluate);
-
-            this.action = action;
-
-            Evaluate();
         }
-
-        void Evaluate(Unit ignore = default(Unit))
-        {
-            subscriptions.Disposable = null;
-
-            var dependencies = Repository.Instance.Evaluate(action);
-
-            subscriptions.Disposable = new CompositeDisposable(
-                from w in dependencies select w.Changed.Subscribe(changed));
-        }
-
-        public void Dispose()
-        {
-            subscriptions.Dispose();
-        }
-
-        Subject<Unit> changed = new Subject<Unit>();
-
-        SerialDisposable subscriptions = new SerialDisposable();
-
-        Action action;
     }
 
-    class Watchable<Type> : IWatchable<Type>
+    class CachedComputedWatchable<T> : WatchableValueBase, IWatchable<T>
     {
-        public Watchable(Func<Type> getter)
-        {
-            changed.Subscribe(MarkAsDirty);
+        Func<T> evaluation;
 
-            this.getter = getter;
+        Action invalidateAndNotify;
+
+        Boolean dirty = true;
+
+        T value;
+
+        Exception exception;
+
+        SerialWatchSubscription subscriptions = new SerialWatchSubscription();
+
+        public CachedComputedWatchable(Func<T> evaluation)
+        {
+            this.evaluation = evaluation;
+            this.invalidateAndNotify = InvalidateAndNotify;
         }
 
-        public Type Value
+        public T Value
         {
             get
             {
@@ -128,41 +168,81 @@ namespace IronStone.Moldinium
 
                 if (dirty)
                 {
-                    subscriptions.Disposable = null;
+                    try
+                    {
+                        value = Repository.Instance.EvaluateAndSubscribe(
+                            Name, ref subscriptions, evaluation, invalidateAndNotify);
 
-                    IEnumerable<IWatchable> dependencies;
+                        exception = null;
 
-                    var value = Repository.Instance.Evaluate(getter, out dependencies);
+                        dirty = false;
+                    }
+                    catch (Exception ex)
+                    {
+                        value = default(T);
 
-                    subscriptions.Disposable = new CompositeDisposable(
-                        from w in dependencies select w.Changed.Subscribe(changed));
+                        exception = ex;
 
-                    dirty = false;
+                        dirty = false;
 
-                    cache = value;
+                        throw;
+                    }
                 }
 
-                return cache;
+                if (null != exception)
+                    throw new RethrowException(exception);
+                else
+                    return value;
             }
         }
 
-        public IObservable<Unit> Changed { get { return changed; } }
+        public override Type Type => typeof(T);
 
-        void MarkAsDirty(Unit u)
+        protected override Object GetUntypedValue() => Value;
+
+        void InvalidateAndNotify()
         {
             dirty = true;
+            Notify();
+        }
+    }
+
+    interface IWatchablesLoggger
+    {
+        void BeginEvalutionFrame(Object evaluator);
+        void CloseEvaluationFrameWithResult(Object result, IEnumerable<IWatchable> dependencies);
+        void CloseEvaulationFrameWithException(Exception ex);
+    }
+
+    class WatchablesLogger : IWatchablesLoggger
+    {
+        Stack<Object> evaluators = new Stack<Object>();
+
+        public void WriteLine(String text)
+        {
+            System.Diagnostics.Debug.WriteLine(new string(' ', evaluators.Count * 2) + text);
         }
 
-        Subject<Unit> changed = new Subject<Unit>();
+        public void BeginEvalutionFrame(object evaluator)
+        {
+            WriteLine($"Evaluating [{evaluator}]");
 
-        SerialDisposable subscriptions = new SerialDisposable();
+            evaluators.Push(evaluator);
+        }
 
-        Boolean dirty = true;
+        public void CloseEvaluationFrameWithResult(object result, IEnumerable<IWatchable> dependencies)
+        {
+            var evaluator = evaluators.Pop();
 
-        Type cache;
+            WriteLine($"Evaluating [{evaluator}] completed with ({result}), now listening to [{String.Join(", ", dependencies)}].");
+        }
 
-        Func<Type> getter;
+        public void CloseEvaulationFrameWithException(Exception ex)
+        {
+            var evaluator = evaluators.Pop();
+        }
     }
+
 
     class Repository
     {
@@ -170,12 +250,12 @@ namespace IronStone.Moldinium
 
         static Lazy<Repository> instance = new Lazy<Repository>(() => new Repository());
 
+        IWatchablesLoggger logger = new WatchablesLogger();
+
         Repository()
         {
             evaluationStack.Push(new EvaluationRecord());
         }
-
-        Dictionary<Object, IWatchable> unrootedWatchables = new Dictionary<Object, IWatchable>();
 
         class EvaluationRecord
         {
@@ -184,87 +264,117 @@ namespace IronStone.Moldinium
 
         Stack<EvaluationRecord> evaluationStack = new Stack<EvaluationRecord>();
 
-        public IEnumerable<IWatchable> Evaluate(Action action)
+        TSource Evaluate<TSource>(Object evaluator, Func<TSource> evaluation, out IEnumerable<IWatchable> dependencies)
         {
+            logger.BeginEvalutionFrame(evaluator);
+
             evaluationStack.Push(new EvaluationRecord());
 
             try
             {
-                action();
+                var result = evaluation();
 
-                return evaluationStack.Pop().evaluatedWatchables;
+                dependencies = evaluationStack.Pop().evaluatedWatchables;
+
+                logger.CloseEvaluationFrameWithResult(result, dependencies);
+
+                return result;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                evaluationStack.Pop();
+                dependencies = evaluationStack.Pop().evaluatedWatchables;
+
+                logger.CloseEvaulationFrameWithException(ex);
 
                 throw;
             }
         }
 
-        public Type Evaluate<Type>(Func<Type> getter, out IEnumerable<IWatchable> dependencies)
+        TSource Evaluate<TSource, TContext>(Object evaluator, Func<TContext, TSource> evaluation, TContext context, out IEnumerable<IWatchable> dependencies)
         {
+            logger.BeginEvalutionFrame(evaluator);
+
             evaluationStack.Push(new EvaluationRecord());
 
             try
             {
-                var result = getter();
+                var result =  evaluation(context);
 
                 dependencies = evaluationStack.Pop().evaluatedWatchables;
+
+                logger.CloseEvaluationFrameWithResult(result, dependencies);
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                evaluationStack.Pop();
+
+                logger.CloseEvaulationFrameWithException(ex);
+
+                throw;
+            }
+        }
+
+        internal TResult EvaluateAndSubscribe<TResult>(Object evaluator, ref SerialWatchSubscription subscriptions, Func<TResult> evaluation, Action onChange)
+        {
+            if (onChange == null) throw new ArgumentException(nameof(onChange));
+
+            IEnumerable<IWatchable> dependencies = null;
+
+            try
+            {
+                var result = Evaluate(evaluator, evaluation, out dependencies);
+
+                SubscribeAll(ref subscriptions, dependencies, onChange);
 
                 return result;
             }
             catch (Exception)
             {
-                evaluationStack.Pop();
+                SubscribeAll(ref subscriptions, dependencies, onChange);
 
                 throw;
             }
         }
 
-        public TResult EvaluateAndSubscribe<TResult>(ref SerialDisposable subscriptions, Func<TResult> evaluation, Action onChange)
+        internal TResult EvaluateAndSubscribe<TResult, TContext>(Object evaluator, ref SerialWatchSubscription subscriptions, Func<TContext, TResult> evaluation, TContext context, Action onChange)
         {
             if (onChange == null) throw new ArgumentException(nameof(onChange));
 
-            IEnumerable<IWatchable> dependencies;
+            IEnumerable<IWatchable> dependencies = null;
 
-            var result = Evaluate(evaluation, out dependencies);
+            try
+            {
+                var result = Evaluate(evaluator, evaluation, context, out dependencies);
 
+                SubscribeAll(ref subscriptions, dependencies, onChange);
+
+                return result;
+            }
+            catch (Exception)
+            {
+                SubscribeAll(ref subscriptions, dependencies, onChange);
+
+                throw;
+            }
+        }
+
+        void SubscribeAll(ref SerialWatchSubscription subscriptions, IEnumerable<IWatchable> dependencies, Action onChange)
+        {
             if (dependencies != null)
             {
                 if (subscriptions == null)
-                    subscriptions = new SerialDisposable();
+                    subscriptions = new SerialWatchSubscription();
 
-                subscriptions.Disposable = new CompositeDisposable(
-                    from d in dependencies select d.Changed.Subscribe(u => onChange()));
+                subscriptions.Subscription = new CompositeWatchSubscription(
+                    from d in dependencies select d.Subscribe(onChange));
             }
             else if (subscriptions != null)
             {
-                subscriptions.Disposable = null;
+                subscriptions.Subscription = null;
             }
-
-            return result;
         }
-
-        public TResult EvaluateAndSubscribe<TSource, TKey, TResult>(ref SerialDisposable subscriptions, Func<TSource, TResult> selector, Action<TSource, TKey> onChange, TSource source, TKey id)
-        {
-            // FIXME 1: The reference to selector and onChange must be weak!
-            // FIXME 2: Don't create lambdas on each call, in particular don't allocate anything if there are no subscriptions
-
-            if (onChange == null) throw new ArgumentException("onChange");
-
-            return EvaluateAndSubscribe(ref subscriptions, () => selector(source), () => onChange(source, id));
-        }
-
-        //public IWatchable<T> GetUnrootedWatchable<T>(Object index)
-        //{
-        //    IWatchable watchable = null;
-
-        //    if (unrootedWatchables.TryGetValue(index, out watchable))
-        //        return (IWatchable<T>)watchable;
-
-        //    return unrootedWatchables[index] = 
-        //}
 
         internal void NoteEvaluation(IWatchable watchable)
         {
@@ -272,28 +382,100 @@ namespace IronStone.Moldinium
         }
     }
 
-    static class Watchables
+    /// <summary>
+    /// Represents a watchable variable that can be written to and read from. It can participate in automatic dependency tracking.
+    /// </summary>
+    /// <typeparam name="T">The type of the variable.</typeparam>
+    public struct Var<T>
     {
-        public static WatchableVariable<Type> CreateVariable<Type>(Type def = default(Type))
+        IWatchableVariable<T> watchable;
+
+        internal Var(IWatchableVariable<T> watchable)
         {
-            return new WatchableVariable<Type>(def);
+            this.watchable = watchable;
         }
 
-        public static IWatchable<Type> Create<Type>(Func<Type> getter)
+        /// <summary>
+        /// Performs an implicit conversion from <see cref="Var{T}"/> to <see cref="Eval{T}"/>.
+        /// </summary>
+        /// <param name="var">The variable.</param>
+        /// <returns>
+        /// The result of the conversion.
+        /// </returns>
+        public static implicit operator Eval<T>(Var<T> var)
+            => new Eval<T>(var.watchable);
+
+        /// <summary>
+        /// Gets or sets the watchable variable's value.
+        /// </summary>
+        /// <value>
+        /// The value of the watchable variable. Neither the setter nor the getter will ever throw.
+        /// </value>
+        public T Value
         {
-            return new Watchable<Type>(getter);
+            get { return watchable.Value; }
+            set { watchable.Value = value; }
+        }
+    }
+
+    /// <summary>
+    /// Represents a watchable evaluation that can be read from. It can participate in automatic dependency tracking.
+    /// </summary>
+    /// <typeparam name="T">The type.</typeparam>
+    /// <remarks>
+    /// The evaluation happens only once initially and each time after a dependency changes,
+    /// each time on first read. On other accesses to <see cref="Value"/>, a cached value is returned.
+    /// If the evaluation throws the exception is not caught and will fall through to the read of <see cref="Value"/>.
+    /// Such an exception is also cached and subsequent reads before dependencies change will receive a
+    /// <see cref="RethrowException"/> with the old exception as the <see cref="Exception.InnerException"/>.
+    /// From the point of dependency tracking, exceptions are just another "return value".
+    /// </remarks>
+    public struct Eval<T>
+    {
+        internal readonly IWatchable<T> watchable;
+
+        internal Eval(IWatchable<T> watchable)
+        {
+            this.watchable = watchable;
         }
 
-        public static IDisposable Watch(Action action)
-        {
-            return new Watcher(action);
-        }
+        /// <summary>
+        /// Gets the value of the watchable evaluation.
+        /// </summary>
+        /// <value>
+        /// The value that the evaluation represents. This will throw if the evaluation throws.
+        /// </value>
+        public T Value => watchable.Value;
+    }
 
-        //public static T Watched<T>(this IObservable<T> source, Object id)
-        //{
-            
+    /// <summary>
+    /// Provides a set of factory methods for watchables.
+    /// </summary>
+    public static class Watchable
+    {
+        /// <summary>
+        /// Creates a watchable variable.
+        /// </summary>
+        /// <typeparam name="T">The type.</typeparam>
+        /// <param name="def">The initial value.</param>
+        /// <returns>The new watchable variable.</returns>
+        public static Var<T> Var<T>(T def = default(T))
+            => new Var<T>(new WatchableVariable<T>(def));
 
-        //    return Repository.Instance.GetUnrootedWatchable<T>(new { source, id }).Value;
-        //}
+        internal static IWatchableVariable VarForType(Type type)
+            => (WatchableVariable)Activator.CreateInstance(
+                typeof(WatchableVariable<>).MakeGenericType(type));
+
+        /// <summary>
+        /// Creates a watchable evaluation.
+        /// </summary>
+        /// <typeparam name="T">The type.</typeparam>
+        /// <param name="evaluation">The function to evaluate.</param>
+        /// <returns>The new watchable evaluation.</returns>
+        public static Eval<T> Eval<T>(Func<T> evaluation)
+            => new Eval<T>(new CachedComputedWatchable<T>(evaluation));
+
+        static IDisposable Subscribe<T>(this Eval<T> eval, Action<T> watcher)
+            => eval.watchable.Subscribe(() => watcher(eval.Value));
     }
 }

@@ -1,17 +1,27 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Configuration;
-using System.Data;
-using System.Linq;
-using System.Threading.Tasks;
+﻿using Newtonsoft.Json;
+using System;
+using System.IO;
+using System.Reflection;
 using System.Windows;
 
 namespace SampleApp
 {
-    /// <summary>
-    /// Interaction logic for App.xaml
-    /// </summary>
     public partial class App : Application
     {
+        public static T GetResourceObject<T>(String fileName)
+        {
+            return JsonConvert.DeserializeObject<T>(GetResourceString(fileName));
+        }
+
+        public static String GetResourceString(String fileName)
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+
+            var names = assembly.GetManifestResourceNames();
+
+            using (var stream = assembly.GetManifestResourceStream($"{nameof(SampleApp)}.{fileName}"))
+            using (var reader = new StreamReader(stream))
+                return reader.ReadToEnd();
+        }
     }
 }

@@ -6,7 +6,7 @@ using System.Collections.Generic;
 
 namespace IronStone.Moldinium.UnitTests
 {
-    public class PropertyChangeTestListener
+    class PropertyChangeTestListener
     {
         public PropertyChangeTestListener(INotifyPropertyChanged obj)
         {
@@ -62,9 +62,9 @@ namespace IronStone.Moldinium.UnitTests
     }
 
     [TestClass]
-    public class BasicTests
+    public class ModelsTests
     {
-        public abstract class Model1
+        public abstract class Model1 : IModel
         {
             public Int32 PlainOld1 { get; set; }
 
@@ -74,11 +74,9 @@ namespace IronStone.Moldinium.UnitTests
         }
 
         [TestMethod]
-        public void SimpleModelTests()
+        public void ModelsFundamentals()
         {
-            var factory = new ModelFactory();
-
-            var model1 = factory.Create<Model1>();
+            var model1 = Models.Create<Model1>();
 
             var listener = new PropertyChangeTestListener(model1 as INotifyPropertyChanged);
 

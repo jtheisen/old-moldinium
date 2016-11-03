@@ -1,0 +1,96 @@
+﻿<UserControl
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:SampleApp"
+             xmlns:System="clr-namespace:System;assembly=mscorlib" x:Class="SampleApp.CartEditor"
+             mc:Ignorable="d" 
+             d:DesignHeight="300" d:DesignWidth="300">
+    <UserControl.Resources>
+
+        <System:Double x:Key="Col1Width">200</System:Double>
+        <System:Double x:Key="Col2Width">200</System:Double>
+        <System:Double x:Key="Col3Width">200</System:Double>
+        <System:Double x:Key="Col4Width">200</System:Double>
+        <System:Double x:Key="Col5Width">200</System:Double>
+
+        <DataTemplate x:Key="CartViewModelTemplate" DataType="{x:Type local:CartViewModel}">
+            <StackPanel Orientation="Vertical">
+                        <StackPanel Orientation="Horizontal">
+            <Grid Width="{StaticResource Col1Width}"><TextBlock Text="category" /></Grid>
+            <Grid Width="{StaticResource Col2Width}"><TextBlock Text="product" /></Grid>
+            <Grid Width="{StaticResource Col3Width}"><TextBlock Text="price per unit" /></Grid>
+            <Grid Width="{StaticResource Col4Width}"><TextBlock Text="number of units" /></Grid>
+            <Grid Width="{StaticResource Col5Width}"><TextBlock Text="subtotal" /></Grid>
+        </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Grid Width="{StaticResource Col1Width}">
+                        <TextBlock Text="category" />
+                    </Grid>
+                    <Grid Width="{StaticResource Col2Width}">
+                        <TextBlock Text="product" />
+                    </Grid>
+                    <Grid Width="{StaticResource Col3Width}">
+                        <TextBlock Text="price per unit" />
+                    </Grid>
+                    <Grid Width="{StaticResource Col4Width}">
+                        <TextBlock Text="number of units" />
+                    </Grid>
+                    <Grid Width="{StaticResource Col5Width}">
+                        <TextBlock Text="subtotal" />
+                    </Grid>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding Lines}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type local:CartLineViewModel}">
+                            <Grid>
+                                <StackPanel Orientation="Horizontal">
+                                    <ComboBox
+                                        ItemsSource="{Binding DataContext.Categories, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
+                                        DisplayMemberPath="Name"
+                                        SelectedItem="{Binding Category, Mode=TwoWay}"
+                                        Width="{StaticResource Col1Width}"
+                                        />
+                                    <ComboBox
+                                        ItemsSource="{Binding Category.Products}"
+                                        DisplayMemberPath="Name"
+                                        SelectedItem="{Binding Product, Mode=TwoWay}"
+                                        Width="{StaticResource Col2Width}"
+                                        />
+                                    <TextBlock
+                                        Text="{Binding Product.Price}"
+                                        Width="{StaticResource Col3Width}"
+                                        />
+                                    <TextBox
+                                        Text="{Binding Quantity, Mode=TwoWay}"
+                                        Width="{StaticResource Col4Width}"
+                                        />
+                                    <TextBlock
+                                        Text="{Binding SubTotal}"
+                                        Width="{StaticResource Col5Width}"
+                                        />
+                                    <Button Content="remove" Command="{Binding RemoveLine}" />
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <StackPanel Orientation="Horizontal">
+                    <Grid Width="{StaticResource Col1Width}"></Grid>
+                    <Grid Width="{StaticResource Col2Width}"></Grid>
+                    <Grid Width="{StaticResource Col3Width}"></Grid>
+                    <Grid Width="{StaticResource Col4Width}"></Grid>
+                    <Grid Width="{StaticResource Col5Width}">
+                        <TextBlock Text="{Binding GrandTotal}" />
+                    </Grid>
+                </StackPanel>
+                <Button Content="add" Command="{Binding AddLine}" />
+            </StackPanel>
+        </DataTemplate>
+    </UserControl.Resources>
+    <Grid>
+        <ContentControl x:Name="Content" ContentTemplate="{StaticResource CartViewModelTemplate}" />
+    </Grid>
+</UserControl>
+ 

@@ -3,30 +3,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:model="clr-namespace:SampleModel;assembly=SampleModel"
         xmlns:local="clr-namespace:SampleApp"
         mc:Ignorable="d"
-        Title="MainWindow" Height="350" Width="525">
-    <Window.Resources>
-        <DataTemplate x:Key="OrderTemplate" DataType="model:OrderVm">
-            <Grid>
-                <DataGrid AutoGenerateColumns="False" IsReadOnly="True" ItemsSource="{Binding Positions}" Margin="10">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Binding="{Binding Index}" />
-                        <DataGridTextColumn Binding="{Binding Total}" />
-                        <DataGridTemplateColumn>
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <Button Command="{Binding MoveUpCommand}"></Button>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                    </DataGrid.Columns>
-                </DataGrid>
-            </Grid>
-        </DataTemplate>
-    </Window.Resources>
+        Title="MainWindow" Height="350" Width="1200">
     <Grid>
-        <ContentControl x:Name="Content" ContentTemplate="{StaticResource OrderTemplate}" />
+        <local:CartEditor></local:CartEditor>
     </Grid>
 </Window>

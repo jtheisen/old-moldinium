@@ -3,13 +3,21 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
-using System.Reactive;
-using System.Reactive.Disposables;
-using System.Reactive.Subjects;
 using System.Reflection;
 
 namespace IronStone.Moldinium
 {
+    /// <summary>
+    /// Marks this assembly as containing Moldinium model archetypes. This is required for the code
+    /// generator to search for <see cref="IModel"/> implementing archetypes to implement proper models from.
+    /// </summary>
+    /// <seealso cref="System.Attribute" />
+    /// <seealso cref="IModel" />
+    [AttributeUsage(AttributeTargets.Assembly)]
+    public class MoldiniumArchetypesAttribute : Attribute
+    {
+    }
+
     class ModelFactoryInterceptor : IInterceptor
     {
         public ModelFactoryInterceptor(ModelFactoryProxyGenerator generator)
@@ -63,7 +71,7 @@ namespace IronStone.Moldinium
 
             public event PropertyChangedEventHandler PropertyChanged;
 
-            protected void Notify(Unit unit)
+            protected void Notify()
             {
                 PropertyChanged?.Invoke(target, eventArgs);
             }
@@ -75,12 +83,16 @@ namespace IronStone.Moldinium
 
         class WatchableVariablePropertyImplementation : PropertyImplementation
         {
+            IWatchableVariable variable;
+
             public WatchableVariablePropertyImplementation(PropertyInfo property, Object target)
                 : base(property, target)
             {
-                variable = WatchableVariable.Create(property.PropertyType);
+                variable = Watchable.VarForType(property.PropertyType);
 
-                variable.Changed.Subscribe(Notify);
+                (variable as WatchableValueBase).Name = $"{property.DeclaringType.Name}.{property.Name}";
+
+                variable.Subscribe(Notify);
             }
 
             public override void Get(IInvocation invocation)
@@ -92,36 +104,34 @@ namespace IronStone.Moldinium
             {
                 variable.UntypedValue = invocation.Arguments[0];
             }
-
-            WatchableVariable variable;
         }
 
         class WatchableImplementationPropertyImplementation : PropertyImplementation
         {
+            IInvocation currentInvocation;
+
+            IWatchable<Object> watchable;
+
             public WatchableImplementationPropertyImplementation(PropertyInfo property, Object target)
                 : base(property, target)
             {
-                changed.Subscribe(OnChanged);
+                watchable = Watchable.Eval(Invoke).watchable;
+
+                (watchable as WatchableValueBase).Name = $"{property.DeclaringType.Name}.{property.Name}";
+
+                watchable.Subscribe(Notify);
             }
 
             public override void Get(IInvocation invocation)
             {
-                if (dirty)
+                try
                 {
-                    subscriptions.Disposable = null;
-
-                    var dependencies = Repository.Instance.Evaluate(invocation.Proceed);
-
-                    subscriptions.Disposable = new CompositeDisposable(
-                        from w in dependencies select w.Changed.Subscribe(changed));
-
-                    cache = invocation.ReturnValue;
-
-                    dirty = false;
+                    currentInvocation = invocation;
+                    invocation.ReturnValue = watchable.UntypedValue;
                 }
-                else
+                finally
                 {
-                    invocation.ReturnValue = cache;
+                    currentInvocation = null;
                 }
             }
 
@@ -130,22 +140,11 @@ namespace IronStone.Moldinium
                 invocation.Proceed();
             }
 
-            void OnChanged(Unit unit)
+            Object Invoke()
             {
-                if (dirty) return;
-
-                dirty = true;
-
-                Notify(unit);
+                currentInvocation.Proceed();
+                return currentInvocation.ReturnValue;
             }
-
-            Boolean dirty = true;
-
-            Object cache;
-
-            Subject<Unit> changed = new Subject<Unit>();
-
-            SerialDisposable subscriptions = new SerialDisposable();
         }
 
 
@@ -216,39 +215,114 @@ namespace IronStone.Moldinium
         }
     }
 
-    public class ModelFactory
-    {
-        public ModelFactory()
-        {
-            interceptor = new ModelFactoryInterceptor(generator);
-        }
+    /// <summary>
+    /// All models need to implement this empty interface.
+    /// This is for type safety and also serves as a type marker for the code generator.
+    /// </summary>
+    public interface IModel { }
 
-        public ModelType Create<ModelType>()
-            where ModelType : class
+    /// <summary>
+    /// Creates models from abstract archetypes.
+    /// </summary>
+    public static class Models
+    {
+        /// <summary>
+        /// Creates a new instance of the given model type.
+        /// </summary>
+        /// <typeparam name="TModel">The type of the model.</typeparam>
+        /// <returns>The newly created model.</returns>
+        public static TModel Create<TModel>()
+            where TModel : class, IModel
         {
-            var model = (ModelType)generator.CreateClassProxy(typeof(ModelType), new[] { typeof(INotifyPropertyChanged) }, interceptor);
+            CheckType(typeof(TModel));
+
+            var model = (TModel)generator.CreateClassProxy(typeof(TModel), new[] { typeof(INotifyPropertyChanged) }, interceptor);
 
             return model;
         }
 
-        public ModelType Create<ModelType>(Action<ModelType> customize)
-            where ModelType : class
+        /// <summary>
+        /// Creates a new instance of the given model type and a customizer function. Example usage: <code>Create&lt;MyModel>(m => m.Parent = this)</code>.
+        /// </summary>
+        /// <typeparam name="TModel">The type of the model.</typeparam>
+        /// <returns>The newly created model.</returns>
+        public static TModel Create<TModel>(Action<TModel> customize)
+            where TModel : class, IModel
         {
-            var model = Create<ModelType>();
+            var model = Create<TModel>();
 
             customize?.Invoke(model);
 
             return model;
         }
 
-
-        public Type GetActualType(Type modelType)
+        /// <summary>
+        /// Gets the most derived type for the given archetype.
+        /// </summary>
+        /// <param name="archetype">The archetype.</param>
+        /// <returns>The most derived type.</returns>
+        public static Type GetMostDerivedType<TModel>()
+            where TModel : class, IModel
         {
-            return generator.GetProxyType(modelType);
+            CheckType(typeof(TModel));
+
+            return generator.GetProxyType(typeof(TModel));
         }
 
-        ModelFactoryInterceptor interceptor;
+        /// <summary>
+        /// Gets the most derived type for the given archetype.
+        /// </summary>
+        /// <param name="archetype">The archetype.</param>
+        /// <returns>The most derived type.</returns>
+        public static Type GetMostDerivedType(Type archetype)
+        {
+            CheckType(archetype);
 
-        ModelFactoryProxyGenerator generator = new ModelFactoryProxyGenerator();
+            return generator.GetProxyType(archetype);
+        }
+
+        static void CheckType(Type archetype)
+        {
+            CheckAssembly(archetype);
+
+            if (checkedTypes.Contains(archetype)) return;
+
+            if (typeof(IModel).IsAssignableFrom(archetype))
+            {
+                checkedTypes.Add(archetype);
+
+                return;
+            }
+
+            throw new ArgumentException($"The type {archetype} should implement the IModel interface if it is to be used as a Moldinium model archetype.");
+        }
+
+        static void CheckAssembly(Type archetype)
+        {
+            var assembly = archetype.Assembly;
+
+            if (checkedAssemblies.Contains(assembly)) return;
+
+            var attributes = assembly.GetCustomAttributes(typeof(MoldiniumArchetypesAttribute), false);
+
+            if (attributes.Length == 0)
+            {
+                throw new ArgumentException($"The type {archetype}'s assembly should have a MoldiniumArchetype attribute if any of its types are to be used as Moldinium archetypes.");
+            }
+            else if (attributes.Length > 1)
+            {
+                throw new ArgumentException($"The type {archetype}'s assembly has multiple MoldiniumArchetype attributes.");
+            }
+
+            checkedAssemblies.Add(assembly);
+        }
+
+        static HashSet<Assembly> checkedAssemblies = new HashSet<Assembly>();
+
+        static HashSet<Type> checkedTypes = new HashSet<Type>();
+
+        static ModelFactoryInterceptor interceptor = new ModelFactoryInterceptor(generator);
+
+        static ModelFactoryProxyGenerator generator = new ModelFactoryProxyGenerator();
     }
 }
