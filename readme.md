@@ -1,7 +1,58 @@
+Moldinium
+=========
 
+Knockout-style dependency tracking for .NET.
 
-|          | As property with the factory              | Directly and stand-alone |
-|----------| ----------------------------------------- | ------------------------ |
-| variable | `public abstract Property { get; set; }`  | `Watchables.Var()`       |
-| computed | `public virtual Property => ...`          | `Watchables.Eval(...)`   |
+Also help with implementing `INotifyPropertyChanged`.
 
+Show me some code!
+==================
+
+Moldinium lets you define classes like this:
+
+```
+public abstract class Course : IModel
+{
+    public abstract String Name { get; set; }
+
+    public abstract Room Location { get; set; }
+
+    public virtual String Description
+        => $"course {Name} in room {Location.Name}";
+}
+
+public abstract class Room : IModel
+{
+    public abstract String Name { get; set; }
+}
+```
+
+And you get the following without any additional code:
+
+- An implementation of `INotifyPropertyChanged` for all properties declared abstract or virtual.
+- The property `Course.Description` will automaticall update on a change to either `Course.Room` or `Course.Location.Name`.
+
+The first point is realized by runtime code-generation that creates derived types from
+your classes - which are thus called archetypes in this context. The derived type then
+implements `INotifyPropertyChanged`.
+
+The second point is called dependency tracking.
+
+Do I really need dependency tracking?
+=====================================
+
+If you write UIs, you want dependency tracking.
+
+It's awesome, helps even in simple cases, and is almost indispensable for clean code in complex ones.
+
+If you ever wrote some more complex UI where you find yourself sprinkling `UpdateThisAndThatAlso()`
+calls in random places as you've lost sight of what excatly needs to be updated when
+what other variable changes, you will have thought that there has to be a better way.
+
+Javascript had a better way for a long time as part of the famous Knockout framwork,
+but the technique can be used in any language.
+
+How do I get started?
+=====================
+
+By reading the [Getting Started guide](https://github.com/jtheisen/moldinium/wiki/Getting-started)!
