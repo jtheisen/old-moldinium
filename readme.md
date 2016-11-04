@@ -32,7 +32,7 @@ public abstract class Room : IModel
 And you get the following without any additional code:
 
 - An implementation of `INotifyPropertyChanged` for all properties declared abstract or virtual.
-- The property `Course.Description` will automatically update on a change to either `Course.Room` or `Course.Location.Name`.
+- The property `Course.Description` will automatically update on a change to either `Course.Location` or `Course.Location.Name`.
 
 The first point is realized by runtime code-generation that creates derived types from
 your classes - which are thus called archetypes in this context. The derived type then
@@ -51,7 +51,7 @@ If you ever wrote some more complex UI where you find yourself sprinkling `Updat
 calls in random places as you've lost sight of what excatly needs to be updated when
 what other variable changes, you will have thought that there has to be a better way.
 
-Javascript had a better way for a long time as part of the famous [Knockout framwork](http://knockoutjs.com/),
+Javascript had a better way for a long time as part of the famous [Knockout framework](http://knockoutjs.com/),
 but the technique can be used in any language. If you're interested in the details,
 [this article on the Knockout site] (http://knockoutjs.com/documentation/computed-dependency-tracking.html)
 explains the idea well, although mind that there are also some design differences (eg. Moldinium's watchable

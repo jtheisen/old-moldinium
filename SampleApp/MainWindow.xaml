@@ -5,8 +5,11 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:SampleApp"
         mc:Ignorable="d"
-        Title="MainWindow" Height="350" Width="1200">
+        ResizeMode="NoResize"
+        Title="Moldinium Cart Sample" Height="500" Width="810">
     <Grid>
-        <local:CartEditor></local:CartEditor>
+        <ScrollViewer>
+            <local:CartEditor></local:CartEditor>
+        </ScrollViewer>
     </Grid>
 </Window>
