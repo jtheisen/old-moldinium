@@ -80,9 +80,9 @@ namespace SampleApp
         public WatchableList<CartLineViewModel> Lines { get; }
             = new WatchableList<CartLineViewModel>();
 
-        // Thanks to WatchableList<>, this is even correct after a new line got added. It depends not only
+        // Thanks to WatchableList<>, this is even correct after a new line gets added. It depends not only
         // on all the subtotals and the property Lines, but also on the contents of the WatchableList
-        // that is held in the Lines property. This last thing would not be the case with an ordenary
+        // that is held in the Lines property. This last thing would not be the case with an ordinary
         // List<> or even an ObservableCollection<>, both of which are not watchable in the Moldinium sense.
         public virtual Decimal GrandTotal
             => Lines.Sum(l => l.SubTotal ?? 0m);
@@ -94,8 +94,8 @@ namespace SampleApp
 
         // This command's status depends on lines being present.
         public ICommand ClearLines
-            => new Command(s => {
-                if (s) return Lines.Count > 0; else Lines.Clear(); return true;
+            => new Command(justCheck => {
+                if (justCheck) return Lines.Count > 0; else Lines.Clear(); return true;
             });
     }
 }
