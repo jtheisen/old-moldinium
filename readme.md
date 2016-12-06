@@ -61,4 +61,3 @@ How do I get started?
 =====================
 
 By reading the [Getting Started guide](https://github.com/jtheisen/moldinium/wiki/Getting-started)!
-
