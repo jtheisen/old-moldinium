@@ -1,7 +1,7 @@
 Moldinium
 =========
 
-Knockout-style dependency tracking for .NET.
+MobX/Knockout-style dependency tracking for .NET.
 
 Also helps with implementing `INotifyPropertyChanged`.
 
@@ -52,10 +52,10 @@ calls in random places as you've lost sight of what excatly needs to be updated 
 what other variable changes, you will have thought that there has to be a better way.
 
 Javascript had a better way for a long time as part of the famous [Knockout framework](http://knockoutjs.com/),
+and more recently the popular [MobX](https://github.com/mobxjs/mobx) library,
 but the technique can be used in any language. If you're interested in the details,
-[this article on the Knockout site] (http://knockoutjs.com/documentation/computed-dependency-tracking.html)
-explains the idea well, although mind that there are also some design differences (eg. Moldinium's watchable
-evaluations are lazy, Knockout's computed observables are eager).
+[this article on the Knockout site](http://knockoutjs.com/documentation/computed-dependency-tracking.html)
+explains the idea well, although mind that there are also some design differences (eg. regarding laziness).
 
 How do I get started?
 =====================
