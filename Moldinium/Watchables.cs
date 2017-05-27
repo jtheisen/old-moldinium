@@ -164,35 +164,40 @@ namespace IronStone.Moldinium
         {
             get
             {
-                Repository.Instance.NoteEvaluation(this);
-
-                if (dirty)
-                {
-                    try
-                    {
-                        value = Repository.Instance.EvaluateAndSubscribe(
-                            Name, ref subscriptions, evaluation, invalidateAndNotify);
-
-                        exception = null;
-
-                        dirty = false;
-                    }
-                    catch (Exception ex)
-                    {
-                        value = default(T);
-
-                        exception = ex;
-
-                        dirty = false;
-
-                        throw;
-                    }
-                }
+                EnsureUpdated();
 
                 if (null != exception)
                     throw new RethrowException(exception);
                 else
                     return value;
+            }
+        }
+
+        void EnsureUpdated()
+        {
+            Repository.Instance.NoteEvaluation(this);
+
+            if (dirty)
+            {
+                try
+                {
+                    value = Repository.Instance.EvaluateAndSubscribe(
+                        Name, ref subscriptions, evaluation, invalidateAndNotify);
+
+                    exception = null;
+
+                    dirty = false;
+                }
+                catch (Exception ex)
+                {
+                    value = default(T);
+
+                    exception = ex;
+
+                    dirty = false;
+
+                    throw;
+                }
             }
         }
 
@@ -203,15 +208,16 @@ namespace IronStone.Moldinium
         void InvalidateAndNotify()
         {
             dirty = true;
+            EnsureUpdated();
             Notify();
         }
     }
 
     interface IWatchablesLogger
     {
-        void BeginEvalutionFrame(Object evaluator);
+        void BeginEvaluationFrame(Object evaluator);
         void CloseEvaluationFrameWithResult(Object result, IEnumerable<IWatchable> dependencies);
-        void CloseEvaulationFrameWithException(Exception ex);
+        void CloseEvaluationFrameWithException(Exception ex);
     }
 
     class WatchablesLogger : IWatchablesLogger
@@ -223,7 +229,7 @@ namespace IronStone.Moldinium
             System.Diagnostics.Debug.WriteLine(new string(' ', evaluators.Count * 2) + text);
         }
 
-        public void BeginEvalutionFrame(object evaluator)
+        public void BeginEvaluationFrame(object evaluator)
         {
             WriteLine($"Evaluating [{evaluator}]");
 
@@ -237,7 +243,7 @@ namespace IronStone.Moldinium
             WriteLine($"Evaluating [{evaluator}] completed with ({result}), now listening to [{String.Join(", ", dependencies)}].");
         }
 
-        public void CloseEvaulationFrameWithException(Exception ex)
+        public void CloseEvaluationFrameWithException(Exception ex)
         {
             var evaluator = evaluators.Pop();
         }
@@ -266,7 +272,7 @@ namespace IronStone.Moldinium
 
         TSource Evaluate<TSource>(Object evaluator, Func<TSource> evaluation, out IEnumerable<IWatchable> dependencies)
         {
-            logger?.BeginEvalutionFrame(evaluator);
+            logger?.BeginEvaluationFrame(evaluator);
 
             evaluationStack.Push(new EvaluationRecord());
 
@@ -284,7 +290,7 @@ namespace IronStone.Moldinium
             {
                 dependencies = evaluationStack.Pop().evaluatedWatchables;
 
-                logger?.CloseEvaulationFrameWithException(ex);
+                logger?.CloseEvaluationFrameWithException(ex);
 
                 throw;
             }
@@ -292,7 +298,7 @@ namespace IronStone.Moldinium
 
         TSource Evaluate<TSource, TContext>(Object evaluator, Func<TContext, TSource> evaluation, TContext context, out IEnumerable<IWatchable> dependencies)
         {
-            logger?.BeginEvalutionFrame(evaluator);
+            logger?.BeginEvaluationFrame(evaluator);
 
             evaluationStack.Push(new EvaluationRecord());
 
@@ -310,7 +316,7 @@ namespace IronStone.Moldinium
             {
                 evaluationStack.Pop();
 
-                logger?.CloseEvaulationFrameWithException(ex);
+                logger?.CloseEvaluationFrameWithException(ex);
 
                 throw;
             }

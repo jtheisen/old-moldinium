@@ -62,6 +62,7 @@ namespace IronStone.Moldinium
         {
             public PropertyImplementation(PropertyInfo property, Object target)
             {
+                this.property = property;
                 this.target = target;
                 eventArgs = new PropertyChangedEventArgs(property.Name);
             }
@@ -76,6 +77,7 @@ namespace IronStone.Moldinium
                 PropertyChanged?.Invoke(target, eventArgs);
             }
 
+            protected readonly PropertyInfo property;
             protected readonly Object target;
 
             private readonly PropertyChangedEventArgs eventArgs;
@@ -108,8 +110,6 @@ namespace IronStone.Moldinium
 
         class WatchableImplementationPropertyImplementation : PropertyImplementation
         {
-            IInvocation currentInvocation;
-
             IWatchable<Object> watchable;
 
             public WatchableImplementationPropertyImplementation(PropertyInfo property, Object target)
@@ -124,15 +124,7 @@ namespace IronStone.Moldinium
 
             public override void Get(IInvocation invocation)
             {
-                try
-                {
-                    currentInvocation = invocation;
-                    invocation.ReturnValue = watchable.UntypedValue;
-                }
-                finally
-                {
-                    currentInvocation = null;
-                }
+                invocation.ReturnValue = watchable.UntypedValue;
             }
 
             public override void Set(IInvocation invocation)
@@ -142,8 +134,9 @@ namespace IronStone.Moldinium
 
             Object Invoke()
             {
-                currentInvocation.Proceed();
-                return currentInvocation.ReturnValue;
+                var result = property.GetGetMethod().Invoke(target, null);
+
+                return result;
             }
         }
 

@@ -6,7 +6,7 @@ namespace IronStone.Moldinium
     public delegate Boolean DCommandImplementation(Boolean simulate);
 
     /// <summary>
-    /// Implements a 
+    /// 
     /// </summary>
     /// <seealso cref="System.Windows.Input.ICommand" />
     /// <seealso cref="System.IDisposable" />
