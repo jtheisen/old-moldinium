@@ -27,6 +27,15 @@ namespace IronStone.Moldinium
 
         public void Intercept(IInvocation invocation)
         {
+            if (!Models.ShouldIntercept)
+            {
+                using (Models.SetShouldIntercept(true))
+                {
+                    invocation.Proceed();
+                }
+                return;
+            }
+
             var method = invocation.Method;
 
             var parts = method.Name.Split('_');
@@ -94,7 +103,7 @@ namespace IronStone.Moldinium
 
                 (variable as WatchableValueBase).Name = $"{property.DeclaringType.Name}.{property.Name}";
 
-                variable.Subscribe(Notify);
+                variable.Subscribe(this, Notify);
             }
 
             public override void Get(IInvocation invocation)
@@ -119,7 +128,7 @@ namespace IronStone.Moldinium
 
                 (watchable as WatchableValueBase).Name = $"{property.DeclaringType.Name}.{property.Name}";
 
-                watchable.Subscribe(Notify);
+                watchable.Subscribe(this, Notify);
             }
 
             public override void Get(IInvocation invocation)
@@ -134,9 +143,12 @@ namespace IronStone.Moldinium
 
             Object Invoke()
             {
-                var result = property.GetGetMethod().Invoke(target, null);
+                using (Models.SetShouldIntercept(false))
+                {
+                    var result = property.GetGetMethod().Invoke(target, null);
 
-                return result;
+                    return result;
+                }
             }
         }
 
@@ -308,6 +320,26 @@ namespace IronStone.Moldinium
             }
 
             checkedAssemblies.Add(assembly);
+        }
+
+        public class PopInterceptionMode : IDisposable
+        {
+            public void Dispose()
+            {
+                Models.shouldInterceptStack.Pop();
+            }
+        }
+
+        static PopInterceptionMode popInterceptionMode;
+
+        static Stack<Boolean> shouldInterceptStack = new Stack<Boolean>(new[] { true });
+
+        static internal Boolean ShouldIntercept => shouldInterceptStack.Peek();
+
+        static internal IDisposable SetShouldIntercept(Boolean value)
+        {
+            shouldInterceptStack.Push(value);
+            return popInterceptionMode;
         }
 
         static HashSet<Assembly> checkedAssemblies = new HashSet<Assembly>();

@@ -13,7 +13,7 @@ namespace IronStone.Moldinium
 
     interface IWatchable
     {
-        IWatchSubscription Subscribe(Action watcher);
+        IWatchSubscription Subscribe(Object agent, Action watcher);
     }
 
     interface IWatchableValue : IWatchable
@@ -41,15 +41,34 @@ namespace IronStone.Moldinium
     class ConcreteWatchable : IWatchable
     {
         Action watchers;
+        Int32 noOfWatchers = 0;
 
         internal String Name { get; set; }
 
-        public IWatchSubscription Subscribe(Action watcher)
+        public IWatchSubscription Subscribe(Object agent, Action watcher)
         {
+            Repository.logger?.WriteLine($"{agent} subscribing to {this}");
+
             watchers += watcher;
 
-            return WatchSubscription.Create(this, () => watchers -= watcher);
+            if (noOfWatchers++ == 0)
+                Activate();
+
+            return WatchSubscription.Create(this, () =>
+            {
+                Repository.logger?.WriteLine($"{agent} unsubscribing from {this}");
+
+                watchers -= watcher;
+                if (--noOfWatchers == 0)
+                    Relax();
+            });
         }
+
+        protected Boolean IsWatched => noOfWatchers > 0;
+
+        protected virtual void Activate() { }
+
+        protected virtual void Relax() { }
 
         public void Notify()
         {
@@ -110,12 +129,16 @@ namespace IronStone.Moldinium
         {
             get
             {
+                Repository.logger?.WriteLine($"{this} returning its value, notifying its evaluation.");
+
                 Repository.Instance.NoteEvaluation(this);
 
                 return value;
             }
             set
             {
+                Repository.logger?.WriteLine($"{this} setting its value, notifying its change.");
+
                 this.value = value;
 
                 Notify();
@@ -154,6 +177,8 @@ namespace IronStone.Moldinium
 
         SerialWatchSubscription subscriptions = new SerialWatchSubscription();
 
+        Boolean alert = false;
+
         public CachedComputedWatchable(Func<T> evaluation)
         {
             this.evaluation = evaluation;
@@ -164,7 +189,7 @@ namespace IronStone.Moldinium
         {
             get
             {
-                EnsureUpdated();
+                EnsureUpdated(rethrow: true);
 
                 if (null != exception)
                     throw new RethrowException(exception);
@@ -173,16 +198,30 @@ namespace IronStone.Moldinium
             }
         }
 
-        void EnsureUpdated()
+        void EnsureUpdated(Boolean rethrow)
         {
             Repository.Instance.NoteEvaluation(this);
 
-            if (dirty)
+            if (dirty || !alert)
             {
                 try
                 {
-                    value = Repository.Instance.EvaluateAndSubscribe(
-                        Name, ref subscriptions, evaluation, invalidateAndNotify);
+                    if (IsWatched)
+                    {
+                        using (Repository.logger?.WriteLineWithScope($"{this} is watched and dirty, so we're evaluating watched."))
+                            value = Repository.Instance.EvaluateAndSubscribe(
+                                Name, ref subscriptions, evaluation, invalidateAndNotify);
+                    }
+                    else if (alert)
+                    {
+                        using (Repository.logger?.WriteLineWithScope($"{this} is dirty but unwatched, so we're evaluating unwatched."))
+                            value = evaluation();
+                    }
+                    else
+                    {
+                        using (Repository.logger?.WriteLineWithScope($"{this} is not alert, so we're evaluating."))
+                            value = evaluation();
+                    }
 
                     exception = null;
 
@@ -196,8 +235,30 @@ namespace IronStone.Moldinium
 
                     dirty = false;
 
-                    throw;
+                    if (rethrow) throw;
                 }
+            }
+        }
+
+        protected override void Activate()
+        {
+            Repository.logger?.WriteLine($"{this} is activated, let's look what we missed.");
+
+            dirty = true;
+            alert = true;
+
+            //EnsureUpdated(rethrow: false);
+        }
+
+        protected override void Relax()
+        {
+            alert = false;
+
+            if (subscriptions != null)
+            {
+                Repository.logger?.WriteLine($"{this} is relaxing.");
+
+                subscriptions.Subscription = null;
             }
         }
 
@@ -208,21 +269,105 @@ namespace IronStone.Moldinium
         void InvalidateAndNotify()
         {
             dirty = true;
-            EnsureUpdated();
-            Notify();
+            if (alert)
+            {
+                //using (Repository.logger?.WriteLineWithScope($"{this} is invalidated, so we're re-evaluating."))
+                //    EnsureUpdated(rethrow: false);
+                Notify();
+            }
+        }
+    }
+
+    public interface IReaction<T> : IDisposable
+    {
+        T Value { get; }
+    }
+
+    class Reaction<T> : IReaction<T>
+    {
+        readonly Func<T> action;
+        readonly String name;
+
+        Action invalidateAndNotify;
+
+        Boolean dirty = true;
+
+        Exception exception;
+
+        SerialWatchSubscription subscriptions;
+
+        public T Value { get; private set; }
+
+        public Reaction(Func<T> action, String name = null)
+        {
+            this.action = action;
+            this.name = name;
+            this.invalidateAndNotify = InvalidateAndNotify;
+
+            EnsureRun();
+        }
+
+        void EnsureRun()
+        {
+            try
+            {
+                if (!dirty) return;
+
+                Value = Repository.Instance.EvaluateAndSubscribe(
+                    this, ref subscriptions, action, invalidateAndNotify);
+
+                exception = null;
+            }
+            catch (Exception ex)
+            {
+                exception = ex;
+            }
+        }
+
+        void InvalidateAndNotify()
+        {
+            dirty = true;
+            EnsureRun();
+        }
+
+        public void Dispose()
+        {
+            if (subscriptions != null)
+                subscriptions.Subscription = null;
+        }
+    }
+
+    class Reaction : Reaction<Object>
+    {
+        public Reaction(Action action, String name = null)
+            : base(() => { action(); return null; }, name)
+        {
+
         }
     }
 
     interface IWatchablesLogger
     {
+        IDisposable WriteLineWithScope(String text);
+        void WriteLine(String text);
+
         void BeginEvaluationFrame(Object evaluator);
         void CloseEvaluationFrameWithResult(Object result, IEnumerable<IWatchable> dependencies);
-        void CloseEvaluationFrameWithException(Exception ex);
+        void CloseEvaluationFrameWithException(Exception ex, IEnumerable<IWatchable> dependencies);
     }
 
     class WatchablesLogger : IWatchablesLogger
     {
+        Int32 nesting = 0;
+
         Stack<Object> evaluators = new Stack<Object>();
+
+        public IDisposable WriteLineWithScope(String text)
+        {
+            WriteLine(text);
+            ++nesting;
+            return new ActionDisposable(() => --nesting);
+        }
 
         public void WriteLine(String text)
         {
@@ -243,9 +388,11 @@ namespace IronStone.Moldinium
             WriteLine($"Evaluating [{evaluator}] completed with ({result}), now listening to [{String.Join(", ", dependencies)}].");
         }
 
-        public void CloseEvaluationFrameWithException(Exception ex)
+        public void CloseEvaluationFrameWithException(Exception ex, IEnumerable<IWatchable> dependencies)
         {
             var evaluator = evaluators.Pop();
+
+            WriteLine($"Evaluating [{evaluator}] completed with {ex.GetType().Name}, now listening to [{String.Join(", ", dependencies)}].");
         }
     }
 
@@ -256,7 +403,7 @@ namespace IronStone.Moldinium
 
         static Lazy<Repository> instance = new Lazy<Repository>(() => new Repository());
 
-        IWatchablesLogger logger = null;
+        public static IWatchablesLogger logger = new WatchablesLogger();
 
         Repository()
         {
@@ -290,7 +437,7 @@ namespace IronStone.Moldinium
             {
                 dependencies = evaluationStack.Pop().evaluatedWatchables;
 
-                logger?.CloseEvaluationFrameWithException(ex);
+                logger?.CloseEvaluationFrameWithException(ex, dependencies);
 
                 throw;
             }
@@ -314,9 +461,9 @@ namespace IronStone.Moldinium
             }
             catch (Exception ex)
             {
-                evaluationStack.Pop();
+                dependencies = evaluationStack.Pop().evaluatedWatchables;
 
-                logger?.CloseEvaluationFrameWithException(ex);
+                logger?.CloseEvaluationFrameWithException(ex, dependencies);
 
                 throw;
             }
@@ -332,13 +479,13 @@ namespace IronStone.Moldinium
             {
                 var result = Evaluate(evaluator, evaluation, out dependencies);
 
-                SubscribeAll(ref subscriptions, dependencies, onChange);
+                SubscribeAll(evaluator, ref subscriptions, dependencies, onChange);
 
                 return result;
             }
             catch (Exception)
             {
-                SubscribeAll(ref subscriptions, dependencies, onChange);
+                SubscribeAll(evaluator, ref subscriptions, dependencies, onChange);
 
                 throw;
             }
@@ -354,19 +501,19 @@ namespace IronStone.Moldinium
             {
                 var result = Evaluate(evaluator, evaluation, context, out dependencies);
 
-                SubscribeAll(ref subscriptions, dependencies, onChange);
+                SubscribeAll(evaluator, ref subscriptions, dependencies, onChange);
 
                 return result;
             }
             catch (Exception)
             {
-                SubscribeAll(ref subscriptions, dependencies, onChange);
+                SubscribeAll(evaluator, ref subscriptions, dependencies, onChange);
 
                 throw;
             }
         }
 
-        void SubscribeAll(ref SerialWatchSubscription subscriptions, IEnumerable<IWatchable> dependencies, Action onChange)
+        void SubscribeAll(Object evaluator, ref SerialWatchSubscription subscriptions, IEnumerable<IWatchable> dependencies, Action onChange)
         {
             if (dependencies != null)
             {
@@ -374,7 +521,7 @@ namespace IronStone.Moldinium
                     subscriptions = new SerialWatchSubscription();
 
                 subscriptions.Subscription = new CompositeWatchSubscription(
-                    from d in dependencies select d.Subscribe(onChange));
+                    from d in dependencies select d.Subscribe(evaluator, onChange));
             }
             else if (subscriptions != null)
             {
@@ -452,6 +599,8 @@ namespace IronStone.Moldinium
         /// The value that the evaluation represents. This will throw if the evaluation throws.
         /// </value>
         public T Value => watchable.Value;
+
+        public IDisposable Subscribe(Action watcher = null, Object name = null) => watchable.Subscribe(name, watcher ?? (() => { }));
     }
 
     /// <summary>
@@ -468,6 +617,15 @@ namespace IronStone.Moldinium
         public static Var<T> Var<T>(T def = default(T))
             => new Var<T>(new WatchableVariable<T>(def));
 
+        /// <summary>
+        /// Creates a watchable variable.
+        /// </summary>
+        /// <typeparam name="T">The type.</typeparam>
+        /// <param name="def">The initial value.</param>
+        /// <returns>The new watchable variable.</returns>
+        public static Var<T> Var<T>(String name, T def = default(T))
+            => new Var<T>(new WatchableVariable<T>(def) { Name = name });
+
         internal static IWatchableVariable VarForType(Type type)
             => (WatchableVariable)Activator.CreateInstance(
                 typeof(WatchableVariable<>).MakeGenericType(type));
@@ -481,7 +639,30 @@ namespace IronStone.Moldinium
         public static Eval<T> Eval<T>(Func<T> evaluation)
             => new Eval<T>(new CachedComputedWatchable<T>(evaluation));
 
-        static IDisposable Subscribe<T>(this Eval<T> eval, Action<T> watcher)
-            => eval.watchable.Subscribe(() => watcher(eval.Value));
+        /// <summary>
+        /// Creates a watchable evaluation.
+        /// </summary>
+        /// <typeparam name="T">The type.</typeparam>
+        /// <param name="evaluation">The function to evaluate.</param>
+        /// <returns>The new watchable evaluation.</returns>
+        public static Eval<T> Eval<T>(String name, Func<T> evaluation)
+            => new Eval<T>(new CachedComputedWatchable<T>(evaluation) { Name = name });
+
+        /// <summary>
+        /// Creates a reaction.
+        /// </summary>
+        /// <param name="action">The action that will run on changes to dependencies.</param>
+        /// <returns>A handle to the new reaction.</returns>
+        public static IDisposable React(Action action)
+            => new Reaction(action);
+
+        /// <summary>
+        /// Creates a reaction.
+        /// </summary>
+        /// <param name="action">The action that will run on changes to dependencies.</param>
+        /// <returns>A handle to the new reaction.</returns>
+        public static IReaction<T> React<T>(Func<T> action)
+            => new Reaction<T>(action);
+
     }
 }

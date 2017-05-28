@@ -4,6 +4,21 @@ using System.Linq;
 
 namespace IronStone.Moldinium
 {
+    class ActionDisposable : IDisposable
+    {
+        Action action;
+
+        public ActionDisposable(Action action)
+        {
+            this.action = action;
+        }
+
+        public void Dispose()
+        {
+            action();
+        }
+    }
+
     class ActionWatchSubscription : IWatchSubscription
     {
         IWatchable watchable;

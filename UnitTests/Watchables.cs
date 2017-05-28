@@ -17,7 +17,7 @@ namespace IronStone.Moldinium.UnitTests
 
             Assert.AreEqual(43, foo.Value);
 
-            var bar = Watchable.Eval(() => foo.Value);
+            var bar = Watchable.React(() => foo.Value);
 
             Assert.AreEqual(43, bar.Value);
 
@@ -36,13 +36,61 @@ namespace IronStone.Moldinium.UnitTests
 
             Assert.AreEqual(0, counter.count);
 
-            Ignore(foo.Value);
+            // Only alert watchables can cache, as they're the only
+            // ones who know when they become dirty.
+            using (Watchable.React(() => foo.Value))
+            {
+                Assert.AreEqual(1, counter.count);
+
+                Ignore(foo.Value);
+
+                // FIXME
+                // We're getting a spurious second evaluation. This is because
+                // the first evaluation still happened while relaxing, although
+                // it theoretically could be trusted to be the correct one
+                // after the computation becomes active shortly after.
+                Assert.AreEqual(2, counter.count);
+
+                Ignore(foo.Value);
+
+                Assert.AreEqual(2, counter.count);
+            }
+        }
+
+        [TestMethod]
+        public void Eagerness()
+        {
+            var counter = new Counter();
+
+            var foo = Watchable.Var(42);
+
+            var bar = Watchable.Eval(() => counter.Get(42) + foo.Value);
+
+            // Unwatched evaluations are lazy.
+            Assert.AreEqual(0, counter.count);
+
+            Ignore(bar.Value);
 
             Assert.AreEqual(1, counter.count);
 
-            Ignore(foo.Value);
+            foo.Value = 43;
 
+            // Unwatched evaluations are still lazy.
             Assert.AreEqual(1, counter.count);
+
+            var reaction = Watchable.React(() => Ignore(bar.Value));
+
+            Assert.AreEqual(2, counter.count);
+
+            foo.Value = 43;
+
+            Assert.AreEqual(3, counter.count);
+
+            reaction.Dispose();
+
+            foo.Value = 44;
+
+            Assert.AreEqual(3, counter.count);
         }
 
         [TestMethod]
@@ -54,29 +102,49 @@ namespace IronStone.Moldinium.UnitTests
 
             AssertThrows(() => { Ignore(throwing.Value); }, typeof(InvalidOperationException));
 
-            AssertThrows(() => { Ignore(throwing.Value); }, typeof(RethrowException));
-
             shouldThrow.Value = false;
 
             Assert.AreEqual(0, throwing.Value);
+
+            shouldThrow.Value = true;
+
+            // This subscription wakes up throwing.
+            using (throwing.Subscribe(name: "keep alive"))
+            {
+                AssertThrows(() => { Ignore(throwing.Value); }, typeof(InvalidOperationException));
+
+                shouldThrow.Value = false;
+
+                Assert.AreEqual(0, throwing.Value);
+            }
         }
 
         [TestMethod]
         public void ExceptionsIndirect()
         {
-            var shouldThrow = Watchable.Var(true);
+            var shouldThrow = Watchable.Var("shouldThrow", true);
 
-            var throwing = Watchable.Eval(() => { if (shouldThrow.Value) throw new InvalidOperationException(); else return 0; });
+            var throwing = Watchable.Eval("throwing", () => { if (shouldThrow.Value) throw new InvalidOperationException(); else return 0; });
 
-            var relay = Watchable.Eval(() => throwing.Value);
+            var relay = Watchable.Eval("relay", () => throwing.Value);
 
             AssertThrows(() => { Ignore(relay.Value); }, typeof(InvalidOperationException));
-
-            AssertThrows(() => { Ignore(relay.Value); }, typeof(RethrowException));
 
             shouldThrow.Value = false;
 
             Assert.AreEqual(0, relay.Value);
+
+            shouldThrow.Value = true;
+
+            // This subscription wakes up the whole chain, first throwing, then relay.
+            using (relay.Subscribe(name: "keep alive"))
+            {
+                AssertThrows(() => { Ignore(relay.Value); }, typeof(InvalidOperationException));
+
+                shouldThrow.Value = false;
+
+                Assert.AreEqual(0, relay.Value);
+            }
         }
 
         struct Counter
@@ -97,13 +165,15 @@ namespace IronStone.Moldinium.UnitTests
             try
             {
                 action();
-
-                Assert.Fail("Unexpectedly no exception.");
             }
             catch (Exception ex)
             {
                 Assert.IsInstanceOfType(ex, exceptionType);
+
+                return;
             }
+
+            Assert.Fail("Unexpectedly no exception.");
         }
     }
 }
