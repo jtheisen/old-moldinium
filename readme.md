@@ -1,3 +1,5 @@
+*WARNING:* It's unlikely that I will develop and support this library any further.
+
 Moldinium
 =========
 
