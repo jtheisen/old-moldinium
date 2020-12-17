@@ -7,7 +7,7 @@ MobX/Knockout-style dependency tracking for .NET.
 
 Also helps with implementing `INotifyPropertyChanged`.
 
-Appveyor build status: ![build-status](https://ci.appveyor.com/api/projects/status/8jwforcs6u0gaw2d?svg=true)
+Appveyor build status: ![build-status](https://ci.appveyor.com/api/projects/status/a4c7svxm4q7solua?svg=true)
 
 Show me some code!
 ==================
