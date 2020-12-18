@@ -2,10 +2,6 @@ image: Visual Studio 2019
 
 configuration: Debug
 
-nuget:
-  account_feed: true
-  project_feed: true
-  disable_publish_on_pr: true
 
 before_build:
 - nuget restore
