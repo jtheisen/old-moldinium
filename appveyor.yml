@@ -14,7 +14,7 @@ build:
   verbosity: minimal
 
 after_build:
-- ps: nuget pack Moldinium\Moldinium.csproj -version "$env:nugetVersion"
+- ps: nuget pack Moldinium\Moldinium.csproj
 
 artifacts:
 - path: '*.nupkg'
