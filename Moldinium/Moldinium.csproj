@@ -3,12 +3,6 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     
-    <PackageId>IronStone.Moldinium</PackageId>
-    <Version>1.1.0</Version>
-    <Authors>Jens Theisen</Authors>
-    <Company>IronStone</Company>
-
-    <Title>Moldinium</Title>
   </PropertyGroup>
 
   <ItemGroup>
