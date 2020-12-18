@@ -286,8 +286,12 @@ namespace IronStone.Moldinium
             return generator.GetProxyType(archetype);
         }
 
+        public static Boolean IsLegacyConventionCheckingEnabled { get; set; } = false;
+
         static void CheckType(Type archetype)
         {
+            if (!IsLegacyConventionCheckingEnabled) return;
+
             CheckAssembly(archetype);
 
             if (checkedTypes.Contains(archetype)) return;
